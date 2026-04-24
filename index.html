@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consensus Scorekeeper</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #fff;
+    color: #111;
+    min-height: 100vh;
+  }
+
+  /* --- Setup Screen --- */
+  #setup {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+  #setup h1 {
+    text-align: center;
+    font-size: 2.5rem;
+    margin-bottom: 30px;
+  }
+  .setup-section {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .setup-section h2 {
+    font-size: 1.2rem;
+    margin-bottom: 16px;
+  }
+  .team-setup {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .team-box {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .team-box label { display: block; font-weight: 600; margin-bottom: 8px; }
+  .team-box input[type="text"] {
+    width: 100%;
+    padding: 8px 12px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    color: #111;
+    font-size: 0.95rem;
+    margin-bottom: 8px;
+  }
+  .team-box input[type="text"]:focus {
+    outline: none;
+    border-color: #666;
+  }
+  .roster-list {
+    list-style: none;
+    margin-top: 8px;
+  }
+  .roster-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    margin-bottom: 4px;
+  }
+  .roster-list li button {
+    background: none;
+    border: none;
+    color: #c00;
+    cursor: pointer;
+    font-size: 1.1rem;
+  }
+  .add-player-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .add-player-row input { flex: 1; }
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  .btn-add {
+    background: #e0e0e0;
+    color: #111;
+  }
+  .btn-add:hover { background: #ccc; }
+  .btn-start {
+    background: #111;
+    color: #fff;
+    font-size: 1.1rem;
+    padding: 12px 32px;
+    display: block;
+    margin: 0 auto;
+  }
+  .btn-start:hover { background: #333; }
+
+  /* PDF upload */
+  .pdf-upload {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .pdf-upload label.file-label {
+    padding: 10px 20px;
+    background: #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .pdf-upload label.file-label:hover { background: #ccc; }
+  .pdf-upload input[type="file"] { display: none; }
+  .pdf-status { font-size: 0.9rem; color: #666; }
+  .pdf-status.success { color: #2e7d32; }
+  .pdf-status.warn { color: #e65100; }
+  .pdf-status.error { color: #c00; }
+
+  /* --- Game Screen --- */
+  #game { display: none; height: 100vh; overflow: hidden; }
+
+  .game-layout {
+    display: flex;
+    height: 100vh;
+  }
+
+  /* Vertical question sidebar (right side) */
+  .question-sidebar {
+    width: 180px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-left: 2px solid #111;
+    background: #fafafa;
+    scrollbar-width: thin;
+    order: 2;
+  }
+  .question-sidebar::-webkit-scrollbar { width: 6px; }
+  .question-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+  .q-group {
+    display: flex;
+    flex-direction: column;
+  }
+  .q-group:not(:last-child) {
+    border-bottom: 2px solid #999;
+  }
+  .q-group-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #888;
+    padding: 4px 8px 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    background: #f0f0f0;
+    border-bottom: 1px solid #ddd;
+  }
+  .q-btn {
+    width: 100%;
+    padding: 5px 8px;
+    border: none;
+    border-bottom: 1px solid #eee;
+    background: #fafafa;
+    color: #111;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: left;
+    display: block;
+  }
+  .q-btn:hover { background: #e0e0e0; }
+  .q-btn.active { background: #111; color: #fff; }
+  .q-btn.answered { background: #e0e0e0; }
+  .q-btn.answered.active { background: #111; color: #fff; }
+  .q-answered-tag {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    vertical-align: middle;
+    letter-spacing: 0.3px;
+  }
+  .team-a-tag { background: #2563eb; color: #fff; }
+  .team-b-tag { background: #dc2626; color: #fff; }
+  .q-btn.active .team-a-tag { background: #93bbfd; color: #1e40af; }
+  .q-btn.active .team-b-tag { background: #fca5a5; color: #991b1b; }
+  .q-btn.answered-a { border-left: 3px solid #2563eb; }
+  .q-btn.answered-b { border-left: 3px solid #dc2626; }
+
+  /* Main content area */
+  .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    order: 1;
+  }
+
+  /* Scoreboard */
+  .scoreboard {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+    padding: 16px;
+    border-bottom: 2px solid #111;
+    flex-shrink: 0;
+  }
+  .team-score {
+    text-align: center;
+    min-width: 160px;
+  }
+  .team-score .team-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .team-score .score {
+    font-size: 4rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .score-divider {
+    font-size: 3rem;
+    color: #999;
+    font-weight: 300;
+  }
+
+  /* Question content area */
+  .question-content {
+    padding: 12px 24px;
+    border-bottom: 1px solid #ddd;
+    flex-shrink: 0;
+  }
+  .question-category-label {
+    font-size: 1.1rem;
+    color: #111;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .question-nav {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .question-nav .btn {
+    background: #e0e0e0;
+    color: #111;
+    padding: 5px 12px;
+    font-size: 0.85rem;
+  }
+  .question-nav .btn:hover { background: #ccc; }
+  .question-text {
+    font-size: 1.05rem;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+  .question-answer {
+    font-size: 1rem;
+    font-weight: 400;
+    margin-bottom: 4px;
+  }
+  .question-answer .answer-label {
+    font-weight: 400;
+  }
+
+  /* Bottom panels */
+  .bottom-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    min-height: 0;
+    border-top: 2px solid #111;
+  }
+
+  .team-panel {
+    padding: 12px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .team-panel:first-child { border-right: 1px solid #ddd; }
+  .team-panel h3 {
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    background: #fafafa;
+  }
+  .player-keybind {
+    background: #e0e0e0;
+    border: 1px solid #ccc;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    min-width: 28px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .player-name {
+    font-weight: 700;
+    font-size: 1.15rem;
+    flex: 1;
+  }
+  .player-points {
+    font-weight: 700;
+    font-size: 1.1rem;
+    min-width: 36px;
+    text-align: right;
+    color: #555;
+  }
+  .player-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .player-actions .btn {
+    padding: 5px 12px;
+    font-size: 0.85rem;
+    border-radius: 4px;
+  }
+  .btn-5 { background: #e0e0e0; color: #111; }
+  .btn-5:hover { background: #ccc; }
+  .btn-10 { background: #111; color: #fff; }
+  .btn-10:hover { background: #333; }
+
+  .game-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 6px 12px;
+    border-top: 1px solid #ddd;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    color: #888;
+  }
+  .game-controls kbd {
+    background: #e0e0e0;
+    border: 1px solid #ccc;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 0.8rem;
+  }
+  .undo-btn {
+    background: #e0e0e0;
+    color: #111;
+  }
+  .undo-btn:hover { background: #ccc; }
+  .undo-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .back-btn {
+    background: #e0e0e0;
+    color: #111;
+  }
+  .back-btn:hover { background: #ccc; }
+</style>
+</head>
+<body>
+
+<!-- ==================== SETUP SCREEN ==================== -->
+<div id="setup">
+  <h1>Consensus Scorekeeper</h1>
+
+  <div class="setup-section">
+    <h2>Upload Packet (Optional)</h2>
+    <div class="pdf-upload">
+      <label class="file-label" for="pdf-input">Choose PDF</label>
+      <input type="file" id="pdf-input" accept=".pdf,.zip">
+      <span class="pdf-status" id="pdf-status">No file selected. You can also upload a .zip of packs.</span>
+    </div>
+    <div id="zip-pack-select" style="display:none; margin-top: 12px;">
+      <label style="font-weight:600;">Select a pack:</label>
+      <select id="zip-pack-dropdown" style="margin-left: 8px; padding: 6px; border: 1px solid #ccc; border-radius: 6px;"></select>
+    </div>
+  </div>
+
+  <div class="setup-section">
+    <h2>Team Rosters</h2>
+    <div class="team-setup">
+      <div class="team-box">
+        <label>Team A Name</label>
+        <input type="text" id="team-a-name" value="Team A" placeholder="Team name">
+        <div class="add-player-row">
+          <input type="text" id="add-player-a" placeholder="Player name">
+          <button class="btn btn-add" onclick="addPlayer('a')">Add</button>
+        </div>
+        <ul class="roster-list" id="roster-a"></ul>
+      </div>
+      <div class="team-box">
+        <label>Team B Name</label>
+        <input type="text" id="team-b-name" value="Team B" placeholder="Team name">
+        <div class="add-player-row">
+          <input type="text" id="add-player-b" placeholder="Player name">
+          <button class="btn btn-add" onclick="addPlayer('b')">Add</button>
+        </div>
+        <ul class="roster-list" id="roster-b"></ul>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-start" id="start-btn" onclick="startGame()">Start Game</button>
+</div>
+
+<!-- ==================== GAME SCREEN ==================== -->
+<div id="game">
+  <div class="game-layout">
+    <!-- Vertical question sidebar -->
+    <div class="question-sidebar" id="q-sidebar"></div>
+
+    <!-- Main content -->
+    <div class="main-content">
+      <!-- Scoreboard -->
+      <div class="scoreboard">
+        <div class="team-score">
+          <div class="team-name" id="game-team-a-name">Team A</div>
+          <div class="score" id="score-a">0</div>
+        </div>
+        <div class="score-divider">:</div>
+        <div class="team-score">
+          <div class="team-name" id="game-team-b-name">Team B</div>
+          <div class="score" id="score-b">0</div>
+        </div>
+      </div>
+
+      <!-- Question content -->
+      <div class="question-content">
+        <div class="question-category-label" id="q-category"></div>
+        <div class="question-text" id="q-text"></div>
+        <div class="question-answer" id="q-answer"></div>
+        <div id="q-answered-by" style="display:none;margin:4px 0;font-size:0.9rem;color:#555;"></div>
+        <div id="streak-status" style="display:none;margin:6px 0;padding:6px 10px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:0.95rem;"></div>
+        <div class="question-nav">
+          <button class="btn" onclick="prevQuestion()">&larr; Prev</button>
+          <button class="btn" onclick="skipQuestion()">Skip (0)</button>
+          <button class="btn" onclick="nextQuestion()">Next &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Player panels -->
+      <div class="bottom-panels">
+        <div class="team-panel" id="panel-a"></div>
+        <div class="team-panel" id="panel-b"></div>
+      </div>
+
+      <!-- Controls bar -->
+      <div class="game-controls">
+        <span><kbd>Key</kbd> = +10 (streaks: +5)</span>
+        <span><kbd>0</kbd> / <kbd>&rarr;</kbd> Next</span>
+        <span><kbd>&larr;</kbd> Prev</span>
+        <span><kbd>Ctrl+Z</kbd> Undo</span>
+        <button class="btn undo-btn" id="undo-btn" onclick="undoLast()" disabled>Undo Last</button>
+        <button class="btn back-btn" onclick="backToSetup()">Back to Setup</button>
+      </div>
+    </div><!-- /main-content -->
+  </div>
+</div>
+
+<script type="module">
+  const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+  window.pdfjsLib = pdfjsLib;
+</script>
+
+<script>
+  // ==================== STATE ====================
+  const state = {
+    teamA: { name: 'Team A', players: [], score: 0 },
+    teamB: { name: 'Team B', players: [], score: 0 },
+    questions: [],
+    currentQuestion: 0,
+    hasQuestions: false,
+    history: [],
+    answeredQuestions: new Set(),
+    zipPacks: null,
+  };
+
+  // ==================== SETUP ====================
+  function addPlayer(team) {
+    const input = document.getElementById(`add-player-${team}`);
+    const name = input.value.trim();
+    if (!name) return;
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    teamObj.players.push({ name, points: 0 });
+    input.value = '';
+    renderRoster(team);
+    input.focus();
+  }
+
+  function removePlayer(team, index) {
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    teamObj.players.splice(index, 1);
+    renderRoster(team);
+  }
+
+  function renderRoster(team) {
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    const list = document.getElementById(`roster-${team}`);
+    list.innerHTML = teamObj.players.map((p, i) =>
+      `<li><span>${escapeHtml(p.name)}</span><button onclick="removePlayer('${team}', ${i})">&times;</button></li>`
+    ).join('');
+  }
+
+  document.getElementById('add-player-a').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer('a'); });
+  document.getElementById('add-player-b').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer('b'); });
+
+  // ==================== PDF PARSING ====================
+  document.getElementById('pdf-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.name.endsWith('.zip')) {
+      await handleZipUpload(file);
+    } else {
+      await parsePdf(await file.arrayBuffer(), file.name);
+    }
+  });
+
+  async function handleZipUpload(file) {
+    const statusEl = document.getElementById('pdf-status');
+    statusEl.textContent = 'Reading zip file...';
+    statusEl.className = 'pdf-status';
+    try {
+      const { entries } = await readZip(await file.arrayBuffer());
+      const pdfEntries = entries.filter(e => e.name.endsWith('.pdf'));
+      if (pdfEntries.length === 0) {
+        statusEl.textContent = 'No PDF files found in zip.';
+        statusEl.className = 'pdf-status error';
+        return;
+      }
+      state.zipPacks = new Map();
+      for (const entry of pdfEntries) {
+        state.zipPacks.set(entry.name, entry.data);
+      }
+      const names = [...state.zipPacks.keys()].sort();
+      const selectDiv = document.getElementById('zip-pack-select');
+      const dropdown = document.getElementById('zip-pack-dropdown');
+      dropdown.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      selectDiv.style.display = 'block';
+      dropdown.onchange = async () => {
+        const selected = dropdown.value;
+        const data = state.zipPacks.get(selected);
+        if (data) await parsePdf(data, selected);
+      };
+      await parsePdf(state.zipPacks.get(names[0]), names[0]);
+    } catch (err) {
+      statusEl.textContent = 'Error reading zip: ' + err.message;
+      statusEl.className = 'pdf-status error';
+    }
+  }
+
+  async function readZip(buffer) {
+    const view = new DataView(buffer);
+    const bytes = new Uint8Array(buffer);
+    const entries = [];
+    let eocdOffset = -1;
+    for (let i = bytes.length - 22; i >= 0; i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocdOffset = i; break; }
+    }
+    if (eocdOffset === -1) throw new Error('Not a valid zip file');
+    const cdOffset = view.getUint32(eocdOffset + 16, true);
+    const cdCount = view.getUint16(eocdOffset + 10, true);
+    let pos = cdOffset;
+    for (let i = 0; i < cdCount; i++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      const compressionMethod = view.getUint16(pos + 10, true);
+      const compressedSize = view.getUint32(pos + 20, true);
+      const nameLen = view.getUint16(pos + 28, true);
+      const extraLen = view.getUint16(pos + 30, true);
+      const commentLen = view.getUint16(pos + 32, true);
+      const localHeaderOffset = view.getUint32(pos + 42, true);
+      const name = new TextDecoder().decode(bytes.slice(pos + 46, pos + 46 + nameLen));
+      const lfhPos = localHeaderOffset;
+      const lfhNameLen = view.getUint16(lfhPos + 26, true);
+      const lfhExtraLen = view.getUint16(lfhPos + 28, true);
+      const dataStart = lfhPos + 30 + lfhNameLen + lfhExtraLen;
+      const rawData = bytes.slice(dataStart, dataStart + compressedSize);
+      let fileData;
+      if (compressionMethod === 0) {
+        fileData = rawData;
+      } else if (compressionMethod === 8) {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(rawData);
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        const total = chunks.reduce((s, c) => s + c.length, 0);
+        fileData = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) { fileData.set(chunk, offset); offset += chunk.length; }
+      } else {
+        pos += 46 + nameLen + extraLen + commentLen;
+        continue;
+      }
+      if (name.endsWith('.pdf')) {
+        entries.push({ name, data: fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength) });
+      }
+      pos += 46 + nameLen + extraLen + commentLen;
+    }
+    return { entries };
+  }
+
+  async function parsePdf(arrayBuffer, filename) {
+    const statusEl = document.getElementById('pdf-status');
+    statusEl.textContent = 'Parsing PDF...';
+    statusEl.className = 'pdf-status';
+    try {
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      // Step 1: Extract all text items with font info
+      // Each item becomes { str, font }
+      const allItems = [];
+      const fontUsage = {}; // font -> count of chars
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        if (content.items.length === 0) continue;
+
+        let currentY = null;
+        for (const item of content.items) {
+          const y = Math.round(item.transform[5]);
+          const newLine = currentY !== null && Math.abs(y - currentY) > 3;
+          if (newLine) {
+            allItems.push({ str: '\n', font: null });
+          }
+          currentY = y;
+          if (item.str) {
+            allItems.push({ str: item.str, font: item.fontName });
+            const f = item.fontName;
+            fontUsage[f] = (fontUsage[f] || 0) + item.str.replace(/\s/g, '').length;
+          }
+        }
+        allItems.push({ str: '\n', font: null });
+      }
+
+      // Step 2: Detect which font is "bold"
+      // The bold font is used for category headers and answer highlights.
+      // Heuristic: the font with the 2nd highest usage (most used = normal body text)
+      const boldFonts = new Set();
+      const sorted = Object.entries(fontUsage).sort((a, b) => b[1] - a[1]);
+      if (sorted.length >= 2) boldFonts.add(sorted[1][0]);
+
+      // Step 3: Build rich segments array: [{str, bold}]
+      const richItems = allItems.map(item => ({
+        str: item.str,
+        bold: item.font ? boldFonts.has(item.font) : false,
+      }));
+
+      // Build lines with bold info: { text, isBold }
+      // A line is "bold" if all non-whitespace content is in the bold font
+      const lines = []; // { text: string, isBold: boolean }
+      let curLineText = '';
+      let curLineBoldChars = 0;
+      let curLineNonBoldChars = 0;
+      for (const item of richItems) {
+        if (item.str === '\n') {
+          const trimmed = curLineText.trim();
+          if (trimmed) {
+            lines.push({
+              text: trimmed,
+              isBold: curLineBoldChars > 0 && curLineNonBoldChars === 0,
+            });
+          }
+          curLineText = '';
+          curLineBoldChars = 0;
+          curLineNonBoldChars = 0;
+        } else {
+          if (curLineText && !curLineText.endsWith(' ') && !item.str.startsWith(' ')) curLineText += ' ';
+          curLineText += item.str;
+          const nonWs = item.str.replace(/\s/g, '').length;
+          if (item.bold) curLineBoldChars += nonWs;
+          else curLineNonBoldChars += nonWs;
+        }
+      }
+      if (curLineText.trim()) {
+        lines.push({
+          text: curLineText.trim(),
+          isBold: curLineBoldChars > 0 && curLineNonBoldChars === 0,
+        });
+      }
+
+      // Build flat rich segments (merging adjacent same-bold items, adding spaces between items on same line)
+      const richSegments = [];
+      let onNewLine = true;
+      for (const item of richItems) {
+        if (item.str === '\n') {
+          if (richSegments.length > 0) {
+            richSegments.push({ str: ' ', bold: false }); // line break = space
+          }
+          onNewLine = true;
+          continue;
+        }
+        if (!onNewLine && richSegments.length > 0) {
+          const last = richSegments[richSegments.length - 1];
+          if (!last.str.endsWith(' ') && !item.str.startsWith(' ')) {
+            if (last.bold === item.bold) {
+              last.str += ' ';
+            } else {
+              richSegments.push({ str: ' ', bold: false });
+            }
+          }
+        }
+        onNewLine = false;
+        // Merge with previous if same bold
+        if (richSegments.length > 0 && richSegments[richSegments.length - 1].bold === item.bold) {
+          richSegments[richSegments.length - 1].str += item.str;
+        } else {
+          richSegments.push({ str: item.str, bold: item.bold });
+        }
+      }
+
+      // Build plain combined text and a position-to-segment map
+      let combined = '';
+      const posMap = []; // for each char in combined, { segIdx, charIdx }
+      for (let si = 0; si < richSegments.length; si++) {
+        const seg = richSegments[si];
+        for (let ci = 0; ci < seg.str.length; ci++) {
+          posMap.push({ segIdx: si, charIdx: ci });
+          combined += seg.str[ci];
+        }
+      }
+
+      const questions = parseQuestions(lines, combined, richSegments, posMap);
+      if (questions.length >= 10) {
+        state.questions = questions;
+        state.hasQuestions = true;
+        const cls = questions.length === 100 ? 'success' : 'warn';
+        statusEl.textContent = `Parsed ${questions.length} questions from "${filename}".` +
+          (questions.length !== 100 ? ` (Expected 100)` : '');
+        statusEl.className = `pdf-status ${cls}`;
+      } else {
+        state.questions = [];
+        state.hasQuestions = false;
+        statusEl.textContent = `Could not parse questions from "${filename}" (found ${questions.length}). Will use numbered tracking.`;
+        statusEl.className = 'pdf-status warn';
+      }
+    } catch (err) {
+      statusEl.textContent = 'Error parsing PDF: ' + err.message;
+      statusEl.className = 'pdf-status error';
+      state.questions = [];
+      state.hasQuestions = false;
+    }
+  }
+
+  const SECTION_WORDS = [
+    'END OF FIRST QUARTER', 'END OF FIRST HALF', 'END OF THIRD QUARTER', 'END OF GAME',
+    'END OF SECOND QUARTER', 'END OF FOURTH QUARTER', 'END OF SECOND HALF',
+    'FIRST QUARTER', 'SECOND QUARTER', 'THIRD QUARTER', 'FOURTH QUARTER',
+    'FIRST HALF', 'SECOND HALF',
+    'Double Jump', 'Jackpot', '5-Part Blitz', '12-Part Blitz', 'Streak',
+    'Jailbreak',
+  ];
+
+  function cleanTrailing(text) {
+    for (const sw of SECTION_WORDS) {
+      const idx = text.indexOf(sw);
+      if (idx !== -1) text = text.substring(0, idx);
+      const idxLower = text.toLowerCase().indexOf(sw.toLowerCase());
+      if (idxLower !== -1) text = text.substring(0, idxLower);
+    }
+    text = text.replace(/\s+(?:Set of \d+.*|Splits?:.*|PACK \d+.*|Streaks?.*|Streak)$/i, '');
+    text = text.replace(/\s+(?:Antarctica|Pokemon|Breads of the World|The History of Shakespeare|Nobel Prizes?|MTV)\s*$/i, '');
+    return text.trim();
+  }
+
+  // Known structural lines that aren't categories
+  const STRUCTURAL_RE = /^(PACK \d+|END OF|FIRST|SECOND|THIRD|FOURTH|_{3,}|20\d\d-\d\d|Post-Secondary|Head|Editor|Writers)/i;
+
+  // Extract rich text (with bold flags) for a range of the combined string
+  function extractRichRange(start, end, richSegments, posMap) {
+    if (start >= end || start >= posMap.length) return [];
+    const result = [];
+    let curBold = null;
+    let curStr = '';
+    for (let i = start; i < end && i < posMap.length; i++) {
+      const { segIdx } = posMap[i];
+      const bold = richSegments[segIdx].bold;
+      if (bold !== curBold && curStr) {
+        result.push({ str: curStr, bold: curBold });
+        curStr = '';
+      }
+      curBold = bold;
+      curStr += richSegments[segIdx].str[posMap[i].charIdx];
+    }
+    if (curStr) result.push({ str: curStr, bold: curBold });
+    return result;
+  }
+
+  // Convert rich segments to HTML
+  function richToHtml(segments) {
+    return segments.map(s => {
+      const text = escapeHtml(s.str);
+      return s.bold ? `<b><u>${text}</u></b>` : text;
+    }).join('');
+  }
+
+  function parseQuestions(lines, combined, richSegments, posMap) {
+    // Step 1: Build category map using bold detection from PDF fonts
+    // A bold line that isn't a question, structural marker, answer/prompt line,
+    // or bare number is a category title.
+    const categoryMap = {};
+    let currentCategory = null;
+    let categoryQuestionCount = 0;
+    let inSplit = false;
+    let splitCount = 0;
+
+    for (const line of lines) {
+      const text = line.text;
+      // Question line (starts with "N.")
+      const qMatch = text.match(/^(\d{1,3})\.\s/);
+      if (qMatch) {
+        const num = parseInt(qMatch[1]);
+        if (num >= 1 && num <= 100 && currentCategory) {
+          categoryQuestionCount++;
+          categoryMap[num] = { category: currentCategory, posInCategory: categoryQuestionCount };
+        }
+        continue;
+      }
+      // Skip structural markers (END OF, QUARTER labels, etc.)
+      if (STRUCTURAL_RE.test(text) || text.length < 2) continue;
+      // Skip answer/accept/prompt/reject lines
+      if (/^(A:\s|\(accept|\(prompt|\(reject)/i.test(text)) continue;
+      // Skip quarter/half markers
+      if (/^(QUARTER|HALF)/i.test(text)) continue;
+      // Skip bare numbers
+      if (/^\d+$/.test(text.trim())) continue;
+
+      // Detect "Splits:" header — next bold lines are numbered sub-categories
+      if (/^Splits?:/i.test(text)) {
+        inSplit = true;
+        splitCount = 0;
+        continue;
+      }
+
+      // A bold line after an answer = category title
+      if (line.isBold) {
+        if (inSplit) {
+          // Sub-category within a split
+          splitCount++;
+          currentCategory = `Splits ${splitCount}: ${text}`;
+        } else {
+          currentCategory = text;
+        }
+        categoryQuestionCount = 0;
+      }
+
+      // A non-split bold category ends split mode
+      // (splits only cover the two sub-categories immediately after the Splits: header)
+      // We detect end of split when we hit a bold line that follows questions from the 2nd sub-category
+      // Simple heuristic: after 2 sub-categories, exit split mode
+      if (inSplit && splitCount >= 2 && line.isBold) {
+        inSplit = false;
+      }
+    }
+
+    // Step 2: Find question positions in combined text
+    const questionStarts = [];
+    const numRegex = /(?:^|\s)(\d{1,3})\.\s/g;
+    let m;
+    while ((m = numRegex.exec(combined)) !== null) {
+      const num = parseInt(m[1]);
+      if (num >= 1 && num <= 100) {
+        questionStarts.push({ num, pos: m.index + m[0].indexOf(m[1]) });
+      }
+    }
+
+    const questions = [];
+    for (let i = 0; i < questionStarts.length; i++) {
+      const start = questionStarts[i];
+      const endPos = i + 1 < questionStarts.length ? questionStarts[i + 1].pos : combined.length;
+      const segment = combined.substring(start.pos, endPos);
+      const catInfo = categoryMap[start.num] || null;
+
+      const aMatch = segment.match(/\bA:\s*(.*)/);
+      if (aMatch) {
+        const qMatch = segment.match(/^\d{1,3}\.\s+([\s\S]*?)\s*\bA:\s*/);
+        if (qMatch) {
+          const questionText = qMatch[1].trim().replace(/\s+/g, ' ');
+
+          // Find where "A:" starts in the combined string for this question
+          const aIdx = segment.indexOf('A:');
+          const answerStartInCombined = start.pos + aIdx + 2; // skip "A:"
+          // Skip whitespace after "A:"
+          let ansStart = answerStartInCombined;
+          while (ansStart < endPos && combined[ansStart] === ' ') ansStart++;
+
+          // Get rich answer segments
+          let answerRich = extractRichRange(ansStart, endPos, richSegments, posMap);
+
+          // Also get plain answer for cleaning
+          let answerPlain = combined.substring(ansStart, endPos).trim().replace(/\s+/g, ' ');
+          answerPlain = cleanTrailing(answerPlain);
+
+          // Check for multiple A: answers (common in streaks)
+          const aMatches = [];
+          let aSearchFrom = 0;
+          while (true) {
+            const aPos = segment.indexOf('A:', aSearchFrom);
+            if (aPos === -1) break;
+            aMatches.push(aPos);
+            aSearchFrom = aPos + 2;
+          }
+          let answerHtml;
+          if (aMatches.length > 1) {
+            // Multiple answers — build rich HTML for each, separated by newlines
+            const plainParts = [];
+            const htmlParts = [];
+            for (let ai = 0; ai < aMatches.length; ai++) {
+              const aPos = aMatches[ai];
+              const aContentStart = start.pos + aPos + 2;
+              let as2 = aContentStart;
+              while (as2 < endPos && combined[as2] === ' ') as2++;
+              const aEnd = ai + 1 < aMatches.length ? start.pos + aMatches[ai + 1] : endPos;
+              const rich = extractRichRange(as2, aEnd, richSegments, posMap);
+              const plainText = cleanTrailing(combined.substring(as2, aEnd).trim().replace(/\s+/g, ' '));
+              // Trim rich HTML to match cleaned plain text length
+              const cleanLen = plainText.length;
+              let tLen = 0;
+              const trimmed = [];
+              for (const seg of rich) {
+                if (tLen >= cleanLen) break;
+                const rem = cleanLen - tLen;
+                if (seg.str.length <= rem) { trimmed.push(seg); tLen += seg.str.length; }
+                else { trimmed.push({ str: seg.str.substring(0, rem), bold: seg.bold }); tLen += rem; }
+              }
+              htmlParts.push(richToHtml(trimmed));
+              plainParts.push(plainText);
+            }
+            answerHtml = htmlParts.map(h => `<div>Answer: ${h}</div>`).join('');
+            answerPlain = plainParts.join(' | ');
+          } else {
+            // Trim the rich segments to match cleaned plain text length
+            // Remove trailing section headers from rich segments
+            const cleanLen = answerPlain.length;
+            let totalLen = 0;
+            const trimmedRich = [];
+            for (const seg of answerRich) {
+              if (totalLen >= cleanLen) break;
+              const remaining = cleanLen - totalLen;
+              if (seg.str.length <= remaining) {
+                trimmedRich.push(seg);
+                totalLen += seg.str.length;
+              } else {
+                trimmedRich.push({ str: seg.str.substring(0, remaining), bold: seg.bold });
+                totalLen += remaining;
+              }
+            }
+            answerHtml = richToHtml(trimmedRich);
+          }
+
+          if (questionText.length > 1 && answerPlain.length > 0) {
+            const isStreakQ = !!(catInfo && catInfo.category && /streak/i.test(catInfo.category));
+            // For streaks, calculate the range of question numbers this streak covers
+            // (from this Q's number to next Q's number - 1)
+            let streakEnd = null;
+            if (isStreakQ && i + 1 < questionStarts.length) {
+              streakEnd = questionStarts[i + 1].num - 1;
+            } else if (isStreakQ) {
+              streakEnd = 100; // last question
+            }
+            questions.push({
+              num: start.num,
+              question: cleanTrailing(questionText),
+              answer: answerPlain,
+              answerHtml,
+              category: catInfo ? catInfo.category : null,
+              posInCategory: catInfo ? catInfo.posInCategory : null,
+              streakRange: isStreakQ ? { start: start.num, end: streakEnd } : null,
+            });
+          }
+        }
+      } else {
+        const qMatch = segment.match(/^\d{1,3}\.\s+(.*)/);
+        if (qMatch) {
+          let questionText = cleanTrailing(qMatch[1].trim().replace(/\s+/g, ' '));
+          if (questionText.length > 1) {
+            questions.push({
+              num: start.num,
+              question: questionText,
+              answer: '(see final part for answer)',
+              answerHtml: '<i>(see final part for answer)</i>',
+              category: catInfo ? catInfo.category : null,
+              posInCategory: catInfo ? catInfo.posInCategory : null,
+            });
+          }
+        }
+      }
+    }
+    const seen = new Set();
+    const unique = [];
+    for (const q of questions) {
+      if (!seen.has(q.num)) { seen.add(q.num); unique.push(q); }
+    }
+    unique.sort((a, b) => a.num - b.num);
+
+    // Post-process: propagate Jackpot/multi-part answers to preceding parts
+    for (let i = unique.length - 1; i >= 0; i--) {
+      if (unique[i].answer !== '(see final part for answer)') continue;
+      // Find the next question with a real answer (the final part of this group)
+      for (let j = i + 1; j < unique.length; j++) {
+        if (unique[j].answer !== '(see final part for answer)') {
+          unique[i].answer = unique[j].answer;
+          unique[i].answerHtml = unique[j].answerHtml;
+          break;
+        }
+      }
+    }
+
+    return unique;
+  }
+
+  // ==================== GAME ====================
+  function startGame() {
+    state.teamA.name = document.getElementById('team-a-name').value.trim() || 'Team A';
+    state.teamB.name = document.getElementById('team-b-name').value.trim() || 'Team B';
+    if (state.teamA.players.length === 0 && state.teamB.players.length === 0) {
+      alert('Add at least one player to a team.');
+      return;
+    }
+    state.teamA.score = 0;
+    state.teamB.score = 0;
+    state.teamA.players.forEach(p => p.points = 0);
+    state.teamB.players.forEach(p => p.points = 0);
+    state.currentQuestion = 0;
+    state.history = [];
+    state.answeredQuestions = new Set();
+
+    if (state.hasQuestions && state.questions.length > 0) {
+      const parsed = new Map(state.questions.map(q => [q.num, q]));
+      const maxNum = Math.max(100, ...state.questions.map(q => q.num));
+      state.questions = [];
+      for (let i = 1; i <= maxNum; i++) {
+        state.questions.push(parsed.get(i) || { num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null });
+      }
+    } else {
+      state.questions = [];
+      for (let i = 1; i <= 100; i++) {
+        state.questions.push({ num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null });
+      }
+    }
+
+    // Build streak groups from parsed streakRange data
+    // A streak is a single parsed question that spans multiple question numbers
+    // (e.g., Q80 with streakRange {start:80, end:81} means it covers slots 80-81)
+    state.streakGroups = {};
+    for (const q of state.questions) {
+      if (q.streakRange) {
+        const startIdx = q.streakRange.start - 1; // 0-indexed
+        const endIdx = q.streakRange.end - 1;
+        // Mark all slots in this range as belonging to this streak
+        for (let si = startIdx; si <= endIdx; si++) {
+          state.questions[si].isStreak = true;
+          state.questions[si].streakGroupStart = startIdx;
+          // Copy streak data to placeholder slots
+          if (si !== startIdx) {
+            state.questions[si].category = q.category;
+          }
+        }
+        const members = [];
+        for (let si = startIdx; si <= endIdx; si++) members.push(si);
+        state.streakGroups[startIdx] = { start: startIdx, end: endIdx, members, category: q.category, sourceQuestion: q };
+      }
+    }
+    state.streakScoring = {}; // track per-streak-group: { team, playerIndex, totalPoints }
+    document.getElementById('setup').style.display = 'none';
+    document.getElementById('game').style.display = 'block';
+    renderGame();
+  }
+
+  function backToSetup() {
+    document.getElementById('setup').style.display = 'block';
+    document.getElementById('game').style.display = 'none';
+  }
+
+  function renderGame() {
+    document.getElementById('game-team-a-name').textContent = state.teamA.name;
+    document.getElementById('game-team-b-name').textContent = state.teamB.name;
+    document.getElementById('score-a').textContent = state.teamA.score;
+    document.getElementById('score-b').textContent = state.teamB.score;
+    renderQuestion();
+    renderPlayerPanel('a');
+    renderPlayerPanel('b');
+    document.getElementById('undo-btn').disabled = state.history.length === 0;
+  }
+
+  function getInitials(name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  }
+
+  function getAnsweredBy(questionIdx) {
+    const entry = [...state.history].reverse().find(h => h.question === questionIdx && !h.isStreak);
+    if (!entry) return null;
+    const teamObj = entry.team === 'a' ? state.teamA : state.teamB;
+    return { name: teamObj.players[entry.playerIndex].name, team: teamObj.name, teamLetter: entry.team, points: entry.points, initials: getInitials(teamObj.players[entry.playerIndex].name) };
+  }
+
+  function renderQuestion() {
+    const q = state.questions[state.currentQuestion];
+    const hasContent = state.hasQuestions && q && q.question;
+
+    if (q && q.isStreak) {
+      // Streak group display
+      document.getElementById('q-answered-by').style.display = 'none';
+      const groupStart = q.streakGroupStart;
+      const group = state.streakGroups[groupStart];
+      const catEl = document.getElementById('q-category');
+      catEl.textContent = q.category || 'Streaks';
+      catEl.style.display = 'block';
+
+      // Show the streak question and its answers
+      const src = group.sourceQuestion;
+      const rangeLabel = `${group.start + 1}-${group.end + 1}`;
+      let contentHtml = `<div style="margin-bottom:6px"><strong>${rangeLabel}.</strong> ${escapeHtml(src.question)}</div>`;
+      if (src.answerHtml) {
+        const html = src.answerHtml;
+        if (html.startsWith('<div>')) {
+          contentHtml += `<div style="margin-left:20px">${html}</div>`;
+        } else {
+          contentHtml += `<div style="margin-left:20px">Answer: ${html}</div>`;
+        }
+      }
+      document.getElementById('q-text').innerHTML = contentHtml;
+      document.getElementById('q-answer').innerHTML = '';
+
+      // Show streak scoring info
+      const streakKey = groupStart;
+      const streakInfo = state.streakScoring[streakKey];
+      const streakStatusEl = document.getElementById('streak-status');
+      if (streakInfo && streakInfo.totalPoints > 0) {
+        const allPlayers = [...state.teamA.players, ...state.teamB.players];
+        const pName = allPlayers[streakInfo.globalPlayerIdx]?.name || '?';
+        streakStatusEl.innerHTML = `<strong>${escapeHtml(pName)}</strong> has <strong>${streakInfo.totalPoints}</strong> points on this streak &nbsp; <button class="btn" style="padding:3px 10px;font-size:0.85rem;background:#e0e0e0" onclick="resetStreak(${streakKey})">Reset to 0</button>`;
+        streakStatusEl.style.display = 'block';
+      } else {
+        streakStatusEl.innerHTML = '';
+        streakStatusEl.style.display = 'none';
+      }
+    } else if (q) {
+      // Normal question display
+      document.getElementById('streak-status').style.display = 'none';
+      const catEl = document.getElementById('q-category');
+      if (q.category) {
+        catEl.textContent = q.category + (q.posInCategory ? ` (${q.posInCategory})` : '');
+        catEl.style.display = 'block';
+      } else {
+        catEl.style.display = 'none';
+      }
+      const qText = hasContent ? q.question : '(No question text available)';
+      document.getElementById('q-text').textContent = `${q.num}. ${qText}`;
+      const ansEl = document.getElementById('q-answer');
+      if (hasContent && q.answer) {
+        const html = q.answerHtml || escapeHtml(q.answer);
+        if (html.startsWith('<div>Answer:')) {
+          ansEl.innerHTML = html;
+        } else {
+          ansEl.innerHTML = `<span class="answer-label">Answer: </span>${html}`;
+        }
+      } else {
+        ansEl.innerHTML = '';
+      }
+      // Show who answered
+      const answeredByEl = document.getElementById('q-answered-by');
+      const info = getAnsweredBy(state.currentQuestion);
+      if (info) {
+        const color = info.teamLetter === 'a' ? '#2563eb' : '#dc2626';
+        answeredByEl.innerHTML = `<span style="color:${color}">&#9632;</span> Answered by <strong>${escapeHtml(info.name)}</strong> (${escapeHtml(info.team)}) for +${info.points}`;
+        answeredByEl.style.display = 'block';
+      } else {
+        answeredByEl.style.display = 'none';
+      }
+    }
+
+    // Build vertical sidebar with category groups
+    const sidebarEl = document.getElementById('q-sidebar');
+    const groups = [];
+    let currentCat = undefined;
+    let currentGroup = null;
+
+    state.questions.forEach((q, i) => {
+      // Skip non-start streak questions (they're merged into a single sidebar entry)
+      if (q.isStreak && q.streakGroupStart !== i) return;
+      // Skip empty placeholder questions (no parsed content)
+      if (!q.question && !q.isStreak) return;
+
+      const cat = q.category || null;
+      const isNewCategory = cat !== currentCat || (q.posInCategory === 1);
+      if (isNewCategory) {
+        currentGroup = { category: cat, items: [] };
+        groups.push(currentGroup);
+        currentCat = cat;
+      }
+
+      if (q.isStreak) {
+        const sg = state.streakGroups[i];
+        const nums = sg.members.map(m => state.questions[m].num);
+        const label = nums.length > 1 ? `${nums[0]}-${nums[nums.length - 1]}` : `${nums[0]}`;
+        currentGroup.items.push({ q, i, streakLabel: label, streakGroup: sg });
+      } else {
+        currentGroup.items.push({ q, i });
+      }
+    });
+
+    sidebarEl.innerHTML = groups.map(g => {
+      const buttons = g.items.map(({ q, i, streakLabel, streakGroup }) => {
+        const isActive = streakGroup
+          ? streakGroup.members.includes(state.currentQuestion)
+          : i === state.currentQuestion;
+        const activeClass = isActive ? 'active' : '';
+        const displayLabel = streakLabel || q.num;
+        // Show who answered this question
+        let answeredTag = '';
+        let answeredTeamClass = '';
+        const isAnswered = state.answeredQuestions.has(i);
+        if (isAnswered) {
+          const info = getAnsweredBy(i);
+          if (info) {
+            const teamClass = info.teamLetter === 'a' ? 'team-a-tag' : 'team-b-tag';
+            answeredTeamClass = info.teamLetter === 'a' ? 'answered-a' : 'answered-b';
+            answeredTag = `<span class="q-answered-tag ${teamClass}">${escapeHtml(info.initials)}</span>`;
+          } else if (streakGroup) {
+            const sk = state.streakScoring[streakGroup.start];
+            if (sk && sk.totalPoints > 0) {
+              const allP = [...state.teamA.players, ...state.teamB.players];
+              const pName = allP[sk.globalPlayerIdx]?.name || '?';
+              const teamClass = sk.team === 'a' ? 'team-a-tag' : 'team-b-tag';
+              answeredTeamClass = sk.team === 'a' ? 'answered-a' : 'answered-b';
+              answeredTag = `<span class="q-answered-tag ${teamClass}">${escapeHtml(getInitials(pName))}</span>`;
+            }
+          }
+        }
+        const answeredClass = isAnswered ? 'answered' : '';
+        return `<button class="q-btn ${activeClass} ${answeredClass} ${answeredTeamClass}" onclick="goToQuestion(${i})">${displayLabel}${answeredTag}</button>`;
+      }).join('');
+
+      const label = g.category
+        ? `<div class="q-group-label">${escapeHtml(g.category)}</div>`
+        : '';
+
+      return `<div class="q-group">${label}${buttons}</div>`;
+    }).join('');
+
+    // Scroll active button into view
+    const activeBtn = sidebarEl.querySelector('.q-btn.active');
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  function nextQuestion() {
+    const q = state.questions[state.currentQuestion];
+    if (q && q.isStreak) {
+      // Jump past the streak group
+      const group = state.streakGroups[q.streakGroupStart];
+      if (group && group.end + 1 < state.questions.length) {
+        state.currentQuestion = group.end + 1;
+        renderQuestion();
+      }
+    } else if (state.currentQuestion < state.questions.length - 1) {
+      let next = state.currentQuestion + 1;
+      // Skip empty placeholders
+      while (next < state.questions.length - 1 && !state.questions[next].question && !state.questions[next].isStreak) {
+        next++;
+      }
+      state.currentQuestion = next;
+      renderQuestion();
+    }
+  }
+
+  function prevQuestion() {
+    if (state.currentQuestion > 0) {
+      let prev = state.currentQuestion - 1;
+      // Skip back over empty placeholders
+      while (prev > 0 && !state.questions[prev].question && !state.questions[prev].isStreak) {
+        prev--;
+      }
+      const pq = state.questions[prev];
+      // If previous is part of a streak, jump to group start
+      if (pq && pq.isStreak) {
+        prev = pq.streakGroupStart;
+      }
+      state.currentQuestion = prev;
+      renderQuestion();
+    }
+  }
+
+  function skipQuestion() { nextQuestion(); }
+
+  function goToQuestion(index) {
+    const q = state.questions[index];
+    // If clicking into a streak group, go to group start
+    if (q && q.isStreak) {
+      index = q.streakGroupStart;
+    }
+    state.currentQuestion = index;
+    renderQuestion();
+  }
+
+  function renderPlayerPanel(team) {
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    const panel = document.getElementById(`panel-${team}`);
+    const offset = team === 'a' ? 0 : state.teamA.players.length;
+
+    let html = `<h3>${escapeHtml(teamObj.name)}</h3>`;
+    const currentQ = state.questions[state.currentQuestion];
+    const isStreak = currentQ && currentQ.isStreak;
+    html += teamObj.players.map((p, i) => {
+      const globalIdx = offset + i;
+      const keybind = globalIdx < 10 ? (globalIdx + 1) % 10 : null;
+      const actions = isStreak
+        ? `<button class="btn btn-5" onclick="addPoints('${team}', ${i}, 5)">+5</button>`
+        : `<button class="btn btn-5" onclick="addPoints('${team}', ${i}, 5)">+5</button>
+           <button class="btn btn-10" onclick="addPoints('${team}', ${i}, 10)">+10</button>`;
+      return `<div class="player-row">
+        ${keybind !== null ? `<span class="player-keybind">${keybind}</span>` : ''}
+        <span class="player-name">${escapeHtml(p.name)}</span>
+        <span class="player-points">${p.points}</span>
+        <div class="player-actions">
+          ${actions}
+        </div>
+      </div>`;
+    }).join('');
+
+    panel.innerHTML = html;
+  }
+
+  function addPoints(team, playerIndex, points) {
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    const q = state.questions[state.currentQuestion];
+
+    // On streak questions, force +5 and don't auto-advance
+    if (q && q.isStreak) {
+      const streakKey = q.streakGroupStart;
+      const globalPlayerIdx = team === 'a' ? playerIndex : state.teamA.players.length + playerIndex;
+
+      // If a different player tries to score on this streak, reset the previous player's streak points first
+      if (state.streakScoring[streakKey] && state.streakScoring[streakKey].globalPlayerIdx !== globalPlayerIdx) {
+        const prev = state.streakScoring[streakKey];
+        const prevTeamObj = prev.team === 'a' ? state.teamA : state.teamB;
+        prevTeamObj.players[prev.playerIndex].points -= prev.totalPoints;
+        prevTeamObj.score -= prev.totalPoints;
+        state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey));
+        state.streakScoring[streakKey] = null;
+      }
+
+      if (!state.streakScoring[streakKey]) {
+        state.streakScoring[streakKey] = { team, playerIndex, globalPlayerIdx, totalPoints: 0 };
+      }
+      const streakInfo = state.streakScoring[streakKey];
+      const addPts = 5;
+
+      teamObj.players[playerIndex].points += addPts;
+      teamObj.score += addPts;
+      streakInfo.totalPoints += addPts;
+      state.history.push({ team, playerIndex, points: addPts, question: state.currentQuestion, isStreak: true, streakKey });
+      state.answeredQuestions.add(state.currentQuestion);
+      renderGame();
+      return;
+    }
+
+    // If question already answered by someone else, remove their points first
+    if (state.answeredQuestions.has(state.currentQuestion)) {
+      const prevEntry = [...state.history].reverse().find(h => h.question === state.currentQuestion && !h.isStreak);
+      if (prevEntry) {
+        const prevTeamObj = prevEntry.team === 'a' ? state.teamA : state.teamB;
+        prevTeamObj.players[prevEntry.playerIndex].points -= prevEntry.points;
+        prevTeamObj.score -= prevEntry.points;
+        state.history = state.history.filter(h => h !== prevEntry);
+      }
+    }
+
+    teamObj.players[playerIndex].points += points;
+    teamObj.score += points;
+    state.history.push({ team, playerIndex, points, question: state.currentQuestion });
+    state.answeredQuestions.add(state.currentQuestion);
+    if (state.currentQuestion < state.questions.length - 1) {
+      state.currentQuestion++;
+    }
+    renderGame();
+  }
+
+  function resetStreak(streakKey) {
+    const streakInfo = state.streakScoring[streakKey];
+    if (!streakInfo || streakInfo.totalPoints === 0) return;
+
+    // Undo all points for this streak
+    const teamObj = streakInfo.team === 'a' ? state.teamA : state.teamB;
+    teamObj.players[streakInfo.playerIndex].points -= streakInfo.totalPoints;
+    teamObj.score -= streakInfo.totalPoints;
+
+    // Remove all streak history entries for this group
+    state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey));
+
+    streakInfo.totalPoints = 0;
+    const group = state.streakGroups[streakKey];
+    if (group) {
+      for (const m of group.members) {
+        const stillAnswered = state.history.some(h => h.question === m);
+        if (!stillAnswered) state.answeredQuestions.delete(m);
+      }
+    }
+
+    renderGame();
+  }
+
+  function undoLast() {
+    if (state.history.length === 0) return;
+    const last = state.history.pop();
+    const teamObj = last.team === 'a' ? state.teamA : state.teamB;
+    teamObj.players[last.playerIndex].points -= last.points;
+    teamObj.score -= last.points;
+    const stillAnswered = state.history.some(h => h.question === last.question);
+    if (!stillAnswered) state.answeredQuestions.delete(last.question);
+    // Update streak scoring state if this was a streak action
+    if (last.isStreak && state.streakScoring[last.streakKey]) {
+      state.streakScoring[last.streakKey].totalPoints -= last.points;
+    }
+    state.currentQuestion = last.question;
+    renderGame();
+  }
+
+  // ==================== KEYBINDS ====================
+  document.addEventListener('keydown', (e) => {
+    if (document.getElementById('game').style.display === 'none') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    const allPlayers = [...state.teamA.players, ...state.teamB.players];
+
+    if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const keyNum = parseInt(e.key);
+      if (keyNum === 0 && !e.shiftKey) {
+        e.preventDefault();
+        nextQuestion();
+        return;
+      }
+      const playerIdx = keyNum === 0 ? 9 : keyNum - 1;
+      if (playerIdx < allPlayers.length) {
+        e.preventDefault();
+        const currentQ = state.questions[state.currentQuestion];
+        const points = (currentQ && currentQ.isStreak) ? 5 : (e.shiftKey ? 5 : 10);
+        if (playerIdx < state.teamA.players.length) {
+          addPoints('a', playerIdx, points);
+        } else {
+          addPoints('b', playerIdx - state.teamA.players.length, points);
+        }
+      }
+      return;
+    }
+    if (e.key === 'ArrowRight') { e.preventDefault(); nextQuestion(); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevQuestion(); return; }
+    if (e.key === 'z' && e.ctrlKey) { e.preventDefault(); undoLast(); return; }
+  });
+
+  // ==================== UTILS ====================
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  window.addPlayer = addPlayer;
+  window.removePlayer = removePlayer;
+  window.startGame = startGame;
+  window.backToSetup = backToSetup;
+  window.addPoints = addPoints;
+  window.undoLast = undoLast;
+  window.nextQuestion = nextQuestion;
+  window.prevQuestion = prevQuestion;
+  window.skipQuestion = skipQuestion;
+  window.goToQuestion = goToQuestion;
+  window.resetStreak = resetStreak;
+</script>
+
+</body>
+</html>
