@@ -133,6 +133,75 @@
   .pdf-status.warn { color: #e65100; }
   .pdf-status.error { color: #c00; }
 
+  /* Online pack browser */
+  .browse-toggle {
+    margin-top: 12px;
+    display: inline-block;
+    background: none;
+    border: none;
+    color: #2563eb;
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-decoration: underline;
+    padding: 0;
+  }
+  .browse-toggle:hover { color: #1e40af; }
+  .pack-browser { display: none; margin-top: 16px; border-top: 1px solid #ddd; padding-top: 16px; }
+  .pack-browser.open { display: block; }
+  .browser-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .browser-tab {
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .browser-tab.active { background: #111; color: #fff; border-color: #111; }
+  .browser-season { margin-bottom: 14px; }
+  .browser-season-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: #666;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .browser-tournament {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .browser-tournament-name { font-weight: 600; font-size: 0.95rem; }
+  .browser-tournament-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  .browser-pack-btn {
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    min-width: 28px;
+  }
+  .browser-pack-btn:hover { background: #e0e0e0; }
+  .browser-pack-btn.zip {
+    background: #e8f1ff;
+    border-color: #93bbfd;
+    color: #1e40af;
+    font-weight: 700;
+    padding: 4px 10px;
+  }
+  .browser-pack-btn.zip:hover { background: #d4e3fa; }
+  .browser-pack-btn:disabled { opacity: 0.5; cursor: wait; }
+
   /* --- Game Screen --- */
   #game { display: none; height: 100vh; overflow: hidden; }
 
@@ -204,6 +273,56 @@
   .q-btn.active .team-b-tag { background: #fca5a5; color: #991b1b; }
   .q-btn.answered-a { border-left: 3px solid #2563eb; }
   .q-btn.answered-b { border-left: 3px solid #dc2626; }
+  .q-btn.missing {
+    background: #f5f5f5;
+    color: #aaa;
+    cursor: not-allowed;
+    font-style: italic;
+    font-size: 0.75rem;
+  }
+  .q-btn.missing:hover { background: #f5f5f5; }
+
+  /* PDF viewer overlay */
+  .pdf-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    overflow: auto;
+    padding: 20px;
+  }
+  .pdf-overlay.open { display: flex; flex-direction: column; align-items: center; }
+  .pdf-overlay-bar {
+    position: sticky;
+    top: 0;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: #222;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    z-index: 1;
+  }
+  .pdf-overlay-bar button {
+    background: #444;
+    border: 1px solid #666;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .pdf-overlay-bar button:hover { background: #555; }
+  .pdf-overlay-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pdf-overlay canvas {
+    background: #fff;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+    max-width: 100%;
+    height: auto;
+  }
 
   /* Main content area */
   .main-content {
@@ -351,6 +470,8 @@
   .btn-5:hover { background: #ccc; }
   .btn-10 { background: #111; color: #fff; }
   .btn-10:hover { background: #333; }
+  .btn-clear { background: #fee; color: #c00; border: 1px solid #fbb; margin-left: 4px; }
+  .btn-clear:hover { background: #fdd; }
 
   .game-controls {
     display: flex;
@@ -402,6 +523,14 @@
       <label style="font-weight:600;">Select a pack:</label>
       <select id="zip-pack-dropdown" style="margin-left: 8px; padding: 6px; border: 1px solid #ccc; border-radius: 6px;"></select>
     </div>
+    <button type="button" class="browse-toggle" id="browse-toggle">Or browse packs from consensustrivia.com</button>
+    <div class="pack-browser" id="pack-browser">
+      <div class="browser-tabs">
+        <button type="button" class="browser-tab active" data-level="post-secondary">Post-Secondary</button>
+        <button type="button" class="browser-tab" data-level="high-school">High School</button>
+      </div>
+      <div id="browser-content"></div>
+    </div>
   </div>
 
   <div class="setup-section">
@@ -429,6 +558,21 @@
   </div>
 
   <button class="btn btn-start" id="start-btn" onclick="startGame()">Start Game</button>
+  <div style="text-align:center; margin-top: 12px;">
+    <button type="button" class="browse-toggle" onclick="clearAndReload()">Clear saved game</button>
+  </div>
+</div>
+
+<!-- ==================== PDF VIEWER OVERLAY ==================== -->
+<div class="pdf-overlay" id="pdf-overlay">
+  <div class="pdf-overlay-bar">
+    <button onclick="pdfPagePrev()" id="pdf-page-prev">&larr; Page</button>
+    <span id="pdf-page-label">Page 1 / 1</span>
+    <button onclick="pdfPageNext()" id="pdf-page-next">Page &rarr;</button>
+    <span style="flex:1"></span>
+    <button onclick="closePdfViewer()">Close (Esc)</button>
+  </div>
+  <canvas id="pdf-canvas"></canvas>
 </div>
 
 <!-- ==================== GAME SCREEN ==================== -->
@@ -475,10 +619,13 @@
       <!-- Controls bar -->
       <div class="game-controls">
         <span><kbd>Key</kbd> = +10 (streaks: +5)</span>
+        <span><kbd>C</kbd> Clear current question</span>
         <span><kbd>0</kbd> / <kbd>&rarr;</kbd> Next</span>
         <span><kbd>&larr;</kbd> Prev</span>
         <span><kbd>Ctrl+Z</kbd> Undo</span>
         <button class="btn undo-btn" id="undo-btn" onclick="undoLast()" disabled>Undo Last</button>
+        <button class="btn" onclick="viewPdf()">View PDF</button>
+        <button class="btn" onclick="exportCsv()">Export CSV</button>
         <button class="btn back-btn" onclick="backToSetup()">Back to Setup</button>
       </div>
     </div><!-- /main-content -->
@@ -502,6 +649,9 @@
     history: [],
     answeredQuestions: new Set(),
     zipPacks: null,
+    packName: null,
+    pdfBytes: null,
+    pdfViewer: { doc: null, currentPage: 1 },
   };
 
   // ==================== SETUP ====================
@@ -514,12 +664,14 @@
     input.value = '';
     renderRoster(team);
     input.focus();
+    if (typeof saveState === 'function') saveState();
   }
 
   function removePlayer(team, index) {
     const teamObj = team === 'a' ? state.teamA : state.teamB;
     teamObj.players.splice(index, 1);
     renderRoster(team);
+    if (typeof saveState === 'function') saveState();
   }
 
   function renderRoster(team) {
@@ -532,6 +684,8 @@
 
   document.getElementById('add-player-a').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer('a'); });
   document.getElementById('add-player-b').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer('b'); });
+  document.getElementById('team-a-name').addEventListener('input', e => { state.teamA.name = e.target.value; if (typeof saveState === 'function') saveState(); });
+  document.getElementById('team-b-name').addEventListener('input', e => { state.teamB.name = e.target.value; if (typeof saveState === 'function') saveState(); });
 
   // ==================== PDF PARSING ====================
   document.getElementById('pdf-input').addEventListener('change', async (e) => {
@@ -545,11 +699,15 @@
   });
 
   async function handleZipUpload(file) {
+    await processZipBuffer(await file.arrayBuffer());
+  }
+
+  async function processZipBuffer(buffer) {
     const statusEl = document.getElementById('pdf-status');
     statusEl.textContent = 'Reading zip file...';
     statusEl.className = 'pdf-status';
     try {
-      const { entries } = await readZip(await file.arrayBuffer());
+      const { entries } = await readZip(buffer);
       const pdfEntries = entries.filter(e => e.name.endsWith('.pdf'));
       if (pdfEntries.length === 0) {
         statusEl.textContent = 'No PDF files found in zip.';
@@ -638,8 +796,15 @@
     const statusEl = document.getElementById('pdf-status');
     statusEl.textContent = 'Parsing PDF...';
     statusEl.className = 'pdf-status';
+    state.packName = filename || null;
+    if (state.pdfViewer) state.pdfViewer.doc = null; // invalidate cached viewer doc
     try {
-      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      // pdf.js detaches the ArrayBuffer it's given. Clone for parsing AND
+      // keep a separate Uint8Array copy in state so we can re-render pages
+      // for the "View PDF" overlay later.
+      const dataCopy = arrayBuffer.slice(0);
+      state.pdfBytes = new Uint8Array(arrayBuffer.slice(0));
+      const pdf = await window.pdfjsLib.getDocument({ data: dataCopy }).promise;
 
       // Step 1: Extract all text items with font info
       // Each item becomes { str, font }
@@ -651,21 +816,38 @@
         const content = await page.getTextContent();
         if (content.items.length === 0) continue;
 
-        let currentY = null;
-        for (const item of content.items) {
-          const y = Math.round(item.transform[5]);
-          const newLine = currentY !== null && Math.abs(y - currentY) > 3;
-          if (newLine) {
-            allItems.push({ str: '\n', font: null });
-          }
-          currentY = y;
-          if (item.str) {
-            allItems.push({ str: item.str, font: item.fontName });
-            const f = item.fontName;
-            fontUsage[f] = (fontUsage[f] || 0) + item.str.replace(/\s/g, '').length;
-          }
+        // pdf.js returns items in content-stream order, which is NOT always
+        // left-to-right spatial order. For PDFs that overlay bold text on
+        // top of the body, the answer text can appear before its "A:" prefix
+        // in stream order. Group items by Y (within tolerance), then sort
+        // each group by X so the combined text reads in spatial order.
+        const itemsWithPos = content.items
+          .filter(it => it.str !== undefined)
+          .map(it => ({
+            str: it.str,
+            font: it.fontName,
+            y: Math.round(it.transform[5]),
+            x: it.transform[4],
+          }));
+
+        const groups = []; // { y, items: [] }
+        for (const it of itemsWithPos) {
+          const g = groups.find(g => Math.abs(g.y - it.y) <= 3);
+          if (g) g.items.push(it);
+          else groups.push({ y: it.y, items: [it] });
         }
-        allItems.push({ str: '\n', font: null });
+        groups.sort((a, b) => b.y - a.y); // top of page first
+
+        for (const g of groups) {
+          g.items.sort((a, b) => a.x - b.x);
+          for (const it of g.items) {
+            allItems.push({ str: it.str, font: it.font, page: i });
+            if (it.str) {
+              fontUsage[it.font] = (fontUsage[it.font] || 0) + it.str.replace(/\s/g, '').length;
+            }
+          }
+          allItems.push({ str: '\n', font: null, page: i });
+        }
       }
 
       // Step 2: Detect which font is "bold"
@@ -675,10 +857,11 @@
       const sorted = Object.entries(fontUsage).sort((a, b) => b[1] - a[1]);
       if (sorted.length >= 2) boldFonts.add(sorted[1][0]);
 
-      // Step 3: Build rich segments array: [{str, bold}]
+      // Step 3: Build rich segments array: [{str, bold, page}]
       const richItems = allItems.map(item => ({
         str: item.str,
         bold: item.font ? boldFonts.has(item.font) : false,
+        page: item.page || 1,
       }));
 
       // Build lines with bold info: { text, isBold }
@@ -720,7 +903,7 @@
       for (const item of richItems) {
         if (item.str === '\n') {
           if (richSegments.length > 0) {
-            richSegments.push({ str: ' ', bold: false }); // line break = space
+            richSegments.push({ str: ' ', bold: false, page: item.page });
           }
           onNewLine = true;
           continue;
@@ -731,16 +914,15 @@
             if (last.bold === item.bold) {
               last.str += ' ';
             } else {
-              richSegments.push({ str: ' ', bold: false });
+              richSegments.push({ str: ' ', bold: false, page: item.page });
             }
           }
         }
         onNewLine = false;
-        // Merge with previous if same bold
         if (richSegments.length > 0 && richSegments[richSegments.length - 1].bold === item.bold) {
           richSegments[richSegments.length - 1].str += item.str;
         } else {
-          richSegments.push({ str: item.str, bold: item.bold });
+          richSegments.push({ str: item.str, bold: item.bold, page: item.page });
         }
       }
 
@@ -756,13 +938,29 @@
       }
 
       const questions = parseQuestions(lines, combined, richSegments, posMap);
+      // Attach page number to each parsed question by mapping its position in `combined`
+      // back to a richSegment, which carries the source page index.
+      for (const q of questions) {
+        const needle = `${q.num}. `;
+        const pos = combined.indexOf(needle);
+        if (pos !== -1 && posMap[pos]) {
+          const seg = richSegments[posMap[pos].segIdx];
+          if (seg && seg.page) q.pageNum = seg.page;
+        }
+      }
+      const totalSlots = questions.reduce((sum, q) => {
+        if (q.streakRange) return sum + (q.streakRange.end - q.streakRange.start + 1);
+        return sum + 1;
+      }, 0);
       if (questions.length >= 10) {
         state.questions = questions;
         state.hasQuestions = true;
-        const cls = questions.length === 100 ? 'success' : 'warn';
-        statusEl.textContent = `Parsed ${questions.length} questions from "${filename}".` +
-          (questions.length !== 100 ? ` (Expected 100)` : '');
+        const cls = totalSlots === 100 ? 'success' : 'warn';
+        statusEl.textContent = `Parsed ${questions.length} questions (${totalSlots} slots) from "${filename}".` +
+          (totalSlots !== 100 ? ` (Expected 100)` : '');
         statusEl.className = `pdf-status ${cls}`;
+        if (typeof savePdfBytes === 'function') savePdfBytes(state.pdfBytes);
+        if (typeof saveState === 'function') saveState();
       } else {
         state.questions = [];
         state.hasQuestions = false;
@@ -983,7 +1181,8 @@
             answerHtml = richToHtml(trimmedRich);
           }
 
-          if (questionText.length > 1 && answerPlain.length > 0) {
+          if (questionText.length > 1) {
+            if (!answerPlain) { answerPlain = '(answer not parsed)'; answerHtml = '<i>(answer not parsed)</i>'; }
             const isStreakQ = !!(catInfo && catInfo.category && /streak/i.test(catInfo.category));
             // For streaks, calculate the range of question numbers this streak covers
             // (from this Q's number to next Q's number - 1)
@@ -1065,7 +1264,7 @@
       const maxNum = Math.max(100, ...state.questions.map(q => q.num));
       state.questions = [];
       for (let i = 1; i <= maxNum; i++) {
-        state.questions.push(parsed.get(i) || { num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null });
+        state.questions.push(parsed.get(i) || { num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null, isMissing: true });
       }
     } else {
       state.questions = [];
@@ -1116,6 +1315,7 @@
     renderPlayerPanel('a');
     renderPlayerPanel('b');
     document.getElementById('undo-btn').disabled = state.history.length === 0;
+    if (typeof saveState === 'function') saveState();
   }
 
   function getInitials(name) {
@@ -1200,7 +1400,7 @@
       const info = getAnsweredBy(state.currentQuestion);
       if (info) {
         const color = info.teamLetter === 'a' ? '#2563eb' : '#dc2626';
-        answeredByEl.innerHTML = `<span style="color:${color}">&#9632;</span> Answered by <strong>${escapeHtml(info.name)}</strong> (${escapeHtml(info.team)}) for +${info.points}`;
+        answeredByEl.innerHTML = `<span style="color:${color}">&#9632;</span> Answered by <strong>${escapeHtml(info.name)}</strong> (${escapeHtml(info.team)}) for +${info.points} <button class="btn btn-clear" style="margin-left:8px;padding:2px 10px;font-size:0.8rem;" onclick="clearCurrentQuestion()" title="Remove this assignment (keybind: c)">Clear (c)</button>`;
         answeredByEl.style.display = 'block';
       } else {
         answeredByEl.style.display = 'none';
@@ -1216,12 +1416,17 @@
     state.questions.forEach((q, i) => {
       // Skip non-start streak questions (they're merged into a single sidebar entry)
       if (q.isStreak && q.streakGroupStart !== i) return;
-      // Skip empty placeholder questions (no parsed content)
-      if (!q.question && !q.isStreak) return;
+      // Skip empty placeholder questions (no parsed content) — but show "missing" gaps
+      if (!q.question && !q.isStreak && !q.isMissing) return;
 
       const cat = q.category || null;
       const isNewCategory = cat !== currentCat || (q.posInCategory === 1);
-      if (isNewCategory) {
+      if (isNewCategory && !q.isMissing) {
+        currentGroup = { category: cat, items: [] };
+        groups.push(currentGroup);
+        currentCat = cat;
+      }
+      if (!currentGroup) {
         currentGroup = { category: cat, items: [] };
         groups.push(currentGroup);
         currentCat = cat;
@@ -1239,6 +1444,9 @@
 
     sidebarEl.innerHTML = groups.map(g => {
       const buttons = g.items.map(({ q, i, streakLabel, streakGroup }) => {
+        if (q.isMissing && !q.isStreak) {
+          return `<button class="q-btn missing" disabled title="Question ${q.num} is skipped in the source packet">${q.num}. (skipped)</button>`;
+        }
         const isActive = streakGroup
           ? streakGroup.members.includes(state.currentQuestion)
           : i === state.currentQuestion;
@@ -1324,6 +1532,7 @@
 
   function goToQuestion(index) {
     const q = state.questions[index];
+    if (q && q.isMissing && !q.isStreak) return;
     // If clicking into a streak group, go to group start
     if (q && q.isStreak) {
       index = q.streakGroupStart;
@@ -1343,16 +1552,15 @@
     html += teamObj.players.map((p, i) => {
       const globalIdx = offset + i;
       const keybind = globalIdx < 10 ? (globalIdx + 1) % 10 : null;
-      const actions = isStreak
+      const scoreBtn = isStreak
         ? `<button class="btn btn-5" onclick="addPoints('${team}', ${i}, 5)">+5</button>`
-        : `<button class="btn btn-5" onclick="addPoints('${team}', ${i}, 5)">+5</button>
-           <button class="btn btn-10" onclick="addPoints('${team}', ${i}, 10)">+10</button>`;
+        : `<button class="btn btn-10" onclick="addPoints('${team}', ${i}, 10)">+10</button>`;
       return `<div class="player-row">
         ${keybind !== null ? `<span class="player-keybind">${keybind}</span>` : ''}
         <span class="player-name">${escapeHtml(p.name)}</span>
         <span class="player-points">${p.points}</span>
         <div class="player-actions">
-          ${actions}
+          ${scoreBtn}
         </div>
       </div>`;
     }).join('');
@@ -1415,6 +1623,37 @@
     renderGame();
   }
 
+  function clearPlayerPoints(team, playerIndex) {
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    const entryIdx = state.history.findIndex(h =>
+      h.question === state.currentQuestion && h.team === team && h.playerIndex === playerIndex && !h.isStreak
+    );
+    if (entryIdx === -1) return;
+    const entry = state.history[entryIdx];
+    teamObj.players[playerIndex].points -= entry.points;
+    teamObj.score -= entry.points;
+    state.history.splice(entryIdx, 1);
+    const stillAnswered = state.history.some(h => h.question === state.currentQuestion && !h.isStreak);
+    if (!stillAnswered) state.answeredQuestions.delete(state.currentQuestion);
+    renderGame();
+  }
+
+  // Clear whoever is assigned points on the current non-streak question.
+  // (On a normal question only one entry exists; streaks use resetStreak.)
+  function clearCurrentQuestion() {
+    const q = state.questions[state.currentQuestion];
+    if (q && q.isStreak) return;
+    const entryIdx = state.history.findIndex(h => h.question === state.currentQuestion && !h.isStreak);
+    if (entryIdx === -1) return;
+    const entry = state.history[entryIdx];
+    const teamObj = entry.team === 'a' ? state.teamA : state.teamB;
+    teamObj.players[entry.playerIndex].points -= entry.points;
+    teamObj.score -= entry.points;
+    state.history.splice(entryIdx, 1);
+    state.answeredQuestions.delete(state.currentQuestion);
+    renderGame();
+  }
+
   function resetStreak(streakKey) {
     const streakInfo = state.streakScoring[streakKey];
     if (!streakInfo || streakInfo.totalPoints === 0) return;
@@ -1456,42 +1695,239 @@
   }
 
   // ==================== KEYBINDS ====================
-  document.addEventListener('keydown', (e) => {
-    if (document.getElementById('game').style.display === 'none') return;
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  // Robust visibility check: relies on the inline style toggled by startGame/backToSetup,
+  // and on the computed style as a fallback if a CSS class ever swaps it instead.
+  function isGameVisible() {
+    const el = document.getElementById('game');
+    if (!el) return false;
+    if (el.style.display && el.style.display !== 'none') return true;
+    return window.getComputedStyle(el).display !== 'none';
+  }
 
-    const allPlayers = [...state.teamA.players, ...state.teamB.players];
+  // Toggle in console: window.DEBUG_KEYS = true
+  // Window-level capture-phase logger: catches every keydown before any descendant
+  // listener can stopPropagation. If a key shows here but NOT in the document
+  // listener below, something downstream is eating it.
+  window.addEventListener('keydown', (e) => {
+    if (window.DEBUG_KEYS) {
+      console.log('[window-capture keydown]', { key: e.key, code: e.code, which: e.which, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey, target: e.target && (e.target.tagName + (e.target.id ? '#' + e.target.id : '') + (e.target.className ? '.' + String(e.target.className).split(' ').join('.') : '')) });
+    }
+  }, true);
+
+  document.addEventListener('keydown', (e) => {
+    if (window.DEBUG_KEYS) {
+      console.log('[document keydown]', { key: e.key, code: e.code, repeat: e.repeat, gameVisible: isGameVisible(), targetTag: e.target && e.target.tagName, currentQ: state.currentQuestion, players: state.teamA.players.length + state.teamB.players.length });
+    }
+    if (e.repeat) return;
+    const pdfOverlay = document.getElementById('pdf-overlay');
+    if (pdfOverlay && pdfOverlay.classList.contains('open')) { if (window.DEBUG_KEYS) console.log('[keydown] return: pdf overlay open'); return; }
+    if (!isGameVisible()) { if (window.DEBUG_KEYS) console.log('[keydown] return: game not visible'); return; }
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { if (window.DEBUG_KEYS) console.log('[keydown] return: focused on', tag); return; }
+
+    if (e.key === 'ArrowRight') { e.preventDefault(); nextQuestion(); return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevQuestion(); return; }
+    if (e.key === 'z' && e.ctrlKey) { e.preventDefault(); undoLast(); return; }
+    if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      clearCurrentQuestion();
+      return;
+    }
 
     if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-      const keyNum = parseInt(e.key);
+      const allPlayers = [...state.teamA.players, ...state.teamB.players];
+      const keyNum = parseInt(e.key, 10);
       if (keyNum === 0 && !e.shiftKey) {
         e.preventDefault();
         nextQuestion();
         return;
       }
       const playerIdx = keyNum === 0 ? 9 : keyNum - 1;
+      if (window.DEBUG_KEYS) console.log('[keydown] playerIdx=', playerIdx, 'allPlayers=', allPlayers.length);
       if (playerIdx < allPlayers.length) {
         e.preventDefault();
         const currentQ = state.questions[state.currentQuestion];
-        const points = (currentQ && currentQ.isStreak) ? 5 : (e.shiftKey ? 5 : 10);
+        // Streaks: only +5. Non-streaks: only +10. Shift modifier no longer toggles.
+        const points = (currentQ && currentQ.isStreak) ? 5 : 10;
+        if (window.DEBUG_KEYS) console.log('[keydown] addPoints', { team: playerIdx < state.teamA.players.length ? 'a' : 'b', playerIdx, points, currentQ: currentQ ? { num: currentQ.num, isStreak: currentQ.isStreak, isMissing: currentQ.isMissing } : null });
         if (playerIdx < state.teamA.players.length) {
           addPoints('a', playerIdx, points);
         } else {
           addPoints('b', playerIdx - state.teamA.players.length, points);
         }
       }
-      return;
     }
-    if (e.key === 'ArrowRight') { e.preventDefault(); nextQuestion(); return; }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); prevQuestion(); return; }
-    if (e.key === 'z' && e.ctrlKey) { e.preventDefault(); undoLast(); return; }
   });
+
+  // ==================== PERSISTENCE ====================
+  // Save game/setup state and the loaded PDF to localStorage so a page refresh
+  // doesn't wipe the user's progress.
+  const STORAGE_KEY = 'consensus-state-v1';
+  const PDF_STORAGE_KEY = 'consensus-pdf-v1';
+
+  function saveState() {
+    try {
+      const snapshot = {
+        teamA: state.teamA,
+        teamB: state.teamB,
+        questions: state.questions,
+        currentQuestion: state.currentQuestion,
+        hasQuestions: state.hasQuestions,
+        history: state.history,
+        answeredQuestions: [...state.answeredQuestions],
+        streakScoring: state.streakScoring,
+        packName: state.packName,
+        gameActive: isGameVisible(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+      console.warn('[persist] saveState failed:', e);
+    }
+  }
+
+  function savePdfBytes(bytes) {
+    try {
+      // chunked to avoid call-stack limits on String.fromCharCode for large arrays
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      localStorage.setItem(PDF_STORAGE_KEY, btoa(bin));
+    } catch (e) {
+      console.warn('[persist] savePdfBytes failed (likely quota):', e);
+    }
+  }
+
+  function loadPdfBytes() {
+    try {
+      const b64 = localStorage.getItem(PDF_STORAGE_KEY);
+      if (!b64) return null;
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    } catch (e) {
+      console.warn('[persist] loadPdfBytes failed:', e);
+      return null;
+    }
+  }
+
+  function rebuildStreakGroups() {
+    state.streakGroups = {};
+    for (const q of state.questions) {
+      if (q && q.streakRange) {
+        const startIdx = q.streakRange.start - 1;
+        const endIdx = q.streakRange.end - 1;
+        for (let si = startIdx; si <= endIdx; si++) {
+          if (state.questions[si]) {
+            state.questions[si].isStreak = true;
+            state.questions[si].streakGroupStart = startIdx;
+          }
+        }
+        const members = [];
+        for (let si = startIdx; si <= endIdx; si++) members.push(si);
+        state.streakGroups[startIdx] = { start: startIdx, end: endIdx, members, category: q.category, sourceQuestion: q };
+      }
+    }
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const snap = JSON.parse(raw);
+      Object.assign(state.teamA, snap.teamA || {});
+      Object.assign(state.teamB, snap.teamB || {});
+      state.questions = snap.questions || [];
+      state.currentQuestion = snap.currentQuestion || 0;
+      state.hasQuestions = !!snap.hasQuestions;
+      state.history = snap.history || [];
+      state.answeredQuestions = new Set(snap.answeredQuestions || []);
+      state.streakScoring = snap.streakScoring || {};
+      state.packName = snap.packName || null;
+      rebuildStreakGroups();
+
+      const pdfBytes = loadPdfBytes();
+      if (pdfBytes) state.pdfBytes = pdfBytes;
+
+      // Restore setup UI fields regardless of game state
+      document.getElementById('team-a-name').value = state.teamA.name || 'Team A';
+      document.getElementById('team-b-name').value = state.teamB.name || 'Team B';
+      renderRoster('a');
+      renderRoster('b');
+      if (state.packName) {
+        const statusEl = document.getElementById('pdf-status');
+        statusEl.textContent = `Restored "${state.packName}" from previous session.`;
+        statusEl.className = 'pdf-status success';
+      }
+
+      if (snap.gameActive) {
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('game').style.display = 'block';
+        renderGame();
+      }
+      return true;
+    } catch (e) {
+      console.warn('[persist] loadState failed:', e);
+      return false;
+    }
+  }
+
+  function clearSavedState() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(PDF_STORAGE_KEY);
+    } catch (e) { /* ignore */ }
+  }
 
   // ==================== UTILS ====================
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  function csvEscape(v) {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function exportCsv() {
+    const winner = state.teamA.score === state.teamB.score
+      ? 'Tie'
+      : (state.teamA.score > state.teamB.score ? state.teamA.name : state.teamB.name);
+    const rows = [];
+    rows.push(['Packet', state.packName || '(no packet loaded)']);
+    rows.push(['Team A', state.teamA.name]);
+    rows.push(['Team B', state.teamB.name]);
+    rows.push(['Final Score', `${state.teamA.name} ${state.teamA.score} - ${state.teamB.score} ${state.teamB.name}`]);
+    rows.push(['Winner', winner]);
+    rows.push(['Exported', new Date().toISOString()]);
+    rows.push([]);
+    rows.push(['Team', 'Score']);
+    rows.push([state.teamA.name, state.teamA.score]);
+    rows.push([state.teamB.name, state.teamB.score]);
+    rows.push([]);
+    rows.push(['Player', 'Team', 'Points']);
+    for (const p of state.teamA.players) rows.push([p.name, state.teamA.name, p.points]);
+    for (const p of state.teamB.players) rows.push([p.name, state.teamB.name, p.points]);
+
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const sanitize = s => String(s || '').replace(/[^a-z0-9 _-]/gi, '_').trim();
+    const packBase = sanitize((state.packName || 'consensus-stats').replace(/\.pdf$/i, '')) || 'consensus-stats';
+    const matchup = `${sanitize(state.teamA.name) || 'TeamA'} vs ${sanitize(state.teamB.name) || 'TeamB'}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${packBase} - ${matchup} - ${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   window.addPlayer = addPlayer;
@@ -1505,6 +1941,229 @@
   window.skipQuestion = skipQuestion;
   window.goToQuestion = goToQuestion;
   window.resetStreak = resetStreak;
+  window.clearPlayerPoints = clearPlayerPoints;
+  window.clearCurrentQuestion = clearCurrentQuestion;
+  window.exportCsv = exportCsv;
+  window.viewPdf = viewPdf;
+  window.closePdfViewer = closePdfViewer;
+  window.clearAndReload = () => {
+    if (!confirm('Clear all saved progress and reload?')) return;
+    clearSavedState();
+    location.reload();
+  };
+  window.pdfPagePrev = () => renderPdfPage(state.pdfViewer.currentPage - 1);
+  window.pdfPageNext = () => renderPdfPage(state.pdfViewer.currentPage + 1);
+
+  // ==================== PDF VIEWER ====================
+  async function viewPdf() {
+    if (!state.pdfBytes) {
+      alert('No PDF loaded — upload or browse a packet first.');
+      return;
+    }
+    if (!state.pdfViewer.doc) {
+      // Pass a fresh copy: pdf.js detaches the buffer it's given.
+      const dataCopy = state.pdfBytes.slice().buffer;
+      state.pdfViewer.doc = await window.pdfjsLib.getDocument({ data: dataCopy }).promise;
+    }
+    const q = state.questions[state.currentQuestion];
+    const targetPage = (q && q.pageNum) || 1;
+    document.getElementById('pdf-overlay').classList.add('open');
+    await renderPdfPage(targetPage);
+  }
+
+  async function renderPdfPage(pageNum) {
+    const doc = state.pdfViewer.doc;
+    if (!doc) return;
+    if (pageNum < 1) pageNum = 1;
+    if (pageNum > doc.numPages) pageNum = doc.numPages;
+    state.pdfViewer.currentPage = pageNum;
+    const page = await doc.getPage(pageNum);
+    const scale = Math.min(2, (window.innerHeight - 100) / page.getViewport({ scale: 1 }).height);
+    const viewport = page.getViewport({ scale: Math.max(1.2, scale) });
+    const canvas = document.getElementById('pdf-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    document.getElementById('pdf-page-label').textContent = `Page ${pageNum} / ${doc.numPages}`;
+    document.getElementById('pdf-page-prev').disabled = pageNum <= 1;
+    document.getElementById('pdf-page-next').disabled = pageNum >= doc.numPages;
+  }
+
+  function closePdfViewer() {
+    document.getElementById('pdf-overlay').classList.remove('open');
+  }
+
+  // Esc + arrow keys inside the overlay
+  document.addEventListener('keydown', (e) => {
+    const overlay = document.getElementById('pdf-overlay');
+    if (!overlay || !overlay.classList.contains('open')) return;
+    if (e.key === 'Escape') { e.preventDefault(); closePdfViewer(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); window.pdfPageNext(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); window.pdfPagePrev(); }
+  });
+
+
+  // ==================== ONLINE PACK BROWSER ====================
+  const PACK_CATALOG = [
+    // Post-Secondary
+    { level: 'post-secondary', season: '2024-25', tournament: 'Late Fall Tournament', dir: '2025-t1-ps', filePrefix: 'Consensus 2024-25 T1 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2024-25', tournament: 'Qualifier',           dir: '2025-t2-ps', filePrefix: 'Consensus 2024-25 T2 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2024-25', tournament: 'Championship',        dir: '2025-t3-ps', filePrefix: 'Consensus 2024-25 T3 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2023-24', tournament: 'Late Fall Tournament', dir: '2024-t2-ps', filePrefix: 'Consensus 2023-24 T2 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2023-24', tournament: 'Qualifier',           dir: '2024-t3-ps', filePrefix: 'Consensus 2023-24 T3 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2023-24', tournament: 'Championship',        dir: '2024-t4-ps', filePrefix: 'Consensus 2023-24 T4 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2023-24', tournament: 'Summer Open',         dir: '2024-t1-open', filePrefix: 'Consensus 2023-24 T1 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2022-23', tournament: 'Season Opener',       dir: '2023-t1-ps', filePrefix: 'Consensus 2022-23 T1 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2022-23', tournament: 'Winter Tournament',   dir: '2023-t2-ps', filePrefix: 'Consensus 2022-23 T2 PS', packCount: 10 },
+    { level: 'post-secondary', season: '2022-23', tournament: 'Summer Open',         dir: '2023-t3-open', filePrefix: 'Consensus 2022-23 T3 PS', packCount: 10 },
+    // High School
+    { level: 'high-school', season: '2024-25', tournament: 'Late Fall Tournament (Junior)', dir: '2025-t1-jr', filePrefix: 'Consensus 2024-25 T1 JR', packCount: 10 },
+    { level: 'high-school', season: '2024-25', tournament: 'Late Fall Tournament',          dir: '2025-t1-hs', filePrefix: 'Consensus 2024-25 T1 HS', packCount: 10 },
+    { level: 'high-school', season: '2024-25', tournament: 'Qualifier (B)',                 dir: '2025-t2-hs-b', filePrefix: 'Consensus 2024-25 T2 HS B', packCount: 10 },
+    { level: 'high-school', season: '2024-25', tournament: 'Qualifier',                     dir: '2025-t2-hs', filePrefix: 'Consensus 2024-25 T2 HS', packCount: 10 },
+    { level: 'high-school', season: '2024-25', tournament: 'Championship',                  dir: '2025-t3-hs', filePrefix: 'Consensus 2024-25 T3 HS', packCount: 10 },
+    { level: 'high-school', season: '2023-24', tournament: 'Season Opener (Junior)',        dir: '2024-t1-jr', filePrefix: 'Consensus 2023-24 T1 JR', packCount: 10 },
+    { level: 'high-school', season: '2023-24', tournament: 'Season Opener',                 dir: '2024-t1-hs', filePrefix: 'Consensus 2023-24 T1 HS', packCount: 10 },
+    { level: 'high-school', season: '2023-24', tournament: 'Late Fall Tournament',          dir: '2024-t2-hs', filePrefix: 'Consensus 2023-24 T2 HS', packCount: 10 },
+    { level: 'high-school', season: '2023-24', tournament: 'Qualifier',                     dir: '2024-t3-hs', filePrefix: 'Consensus 2023-24 T3 HS', packCount: 10 },
+    { level: 'high-school', season: '2023-24', tournament: 'Championship',                  dir: '2024-t4-hs', filePrefix: 'Consensus 2023-24 T4 HS', packCount: 10 },
+    { level: 'high-school', season: '2022-23', tournament: 'Season Opener',                 dir: '2023-t1-hs', filePrefix: 'Consensus 2022-23 T1 HS', packCount: 10 },
+    { level: 'high-school', season: '2022-23', tournament: 'Winter Qualifier',              dir: '2023-t2-hs', filePrefix: 'Consensus 2022-23 T2 HS', packCount: 10 },
+    { level: 'high-school', season: '2022-23', tournament: 'Championship',                  dir: '2023-t3-hs', filePrefix: 'Consensus 2022-23 T3 HS', packCount: 10 },
+  ];
+
+  const PACK_SITE_BASE = 'https://www.consensustrivia.com';
+  const IS_LOCAL_SERVER = location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  const CORS_PROXIES = [
+    ...(IS_LOCAL_SERVER ? [(url) => `${location.origin}/proxy/${encodeURIComponent(url)}`] : []),
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
+    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
+  ];
+
+  function packPdfUrl(t, n) {
+    return `${PACK_SITE_BASE}/${t.level}/packs/${t.dir}/${t.filePrefix} Pack ${n}.pdf`;
+  }
+  function packZipUrl(t) {
+    return `${PACK_SITE_BASE}/${t.level}/packs/${t.dir}/${t.filePrefix} Packs.zip`;
+  }
+
+  // PDFs start with "%PDF" (0x25 0x50 0x44 0x46), zips start with "PK\x03\x04" (0x50 0x4B 0x03 0x04)
+  function looksLikePdfOrZip(buffer) {
+    if (!buffer || buffer.byteLength < 4) return false;
+    const b = new Uint8Array(buffer, 0, 4);
+    const isPdf = b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
+    const isZip = b[0] === 0x50 && b[1] === 0x4B && b[2] === 0x03 && b[3] === 0x04;
+    return isPdf || isZip;
+  }
+
+  async function fetchWithFallback(url, statusEl) {
+    const attempts = [
+      ...CORS_PROXIES.map((makeProxy, i) => ({
+        label: i === 0 && IS_LOCAL_SERVER ? 'local proxy' : `proxy ${i + (IS_LOCAL_SERVER ? 0 : 1)}`,
+        fn: () => fetch(makeProxy(url)),
+      })),
+      { label: 'direct', fn: () => fetch(url) },
+    ];
+    for (const attempt of attempts) {
+      if (statusEl) statusEl.textContent = `Downloading via ${attempt.label}...`;
+      try {
+        const r = await attempt.fn();
+        if (!r.ok) continue;
+        const buffer = await r.arrayBuffer();
+        if (looksLikePdfOrZip(buffer)) return buffer;
+      } catch (e) { /* try next */ }
+    }
+    throw new Error('All download attempts failed (CORS blocked). Run this page from a local web server (e.g. `python -m http.server`) or download the pack manually from consensustrivia.com and upload it.');
+  }
+
+  let activeBrowserLevel = 'post-secondary';
+
+  function renderBrowser() {
+    const container = document.getElementById('browser-content');
+    const tournaments = PACK_CATALOG.filter(t => t.level === activeBrowserLevel);
+    const bySeason = {};
+    for (const t of tournaments) {
+      if (!bySeason[t.season]) bySeason[t.season] = [];
+      bySeason[t.season].push(t);
+    }
+    const seasons = Object.keys(bySeason).sort().reverse();
+    const html = seasons.map(season => {
+      const rows = bySeason[season].map((t, idx) => {
+        const tIdx = PACK_CATALOG.indexOf(t);
+        const packBtns = [];
+        for (let n = 1; n <= t.packCount; n++) {
+          packBtns.push(`<button class="browser-pack-btn" data-action="pack" data-tidx="${tIdx}" data-pack="${n}" title="Pack ${n}">${n}</button>`);
+        }
+        const zipBtn = `<button class="browser-pack-btn zip" data-action="zip" data-tidx="${tIdx}" title="Download all packs as zip">All ZIP</button>`;
+        return `
+          <div class="browser-tournament">
+            <div class="browser-tournament-name">${escapeHtml(t.tournament)}</div>
+            <div class="browser-tournament-actions">${packBtns.join('')}${zipBtn}</div>
+          </div>`;
+      }).join('');
+      return `<div class="browser-season"><div class="browser-season-label">${escapeHtml(season)} Season</div>${rows}</div>`;
+    }).join('');
+    container.innerHTML = html || '<div style="color:#666;font-size:0.9rem;">No tournaments available.</div>';
+  }
+
+  document.getElementById('browse-toggle').addEventListener('click', () => {
+    const browser = document.getElementById('pack-browser');
+    const opening = !browser.classList.contains('open');
+    browser.classList.toggle('open', opening);
+    document.getElementById('browse-toggle').textContent = opening
+      ? 'Hide online pack browser'
+      : 'Or browse packs from consensustrivia.com';
+    if (opening) renderBrowser();
+  });
+
+  document.querySelectorAll('.browser-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      activeBrowserLevel = tab.dataset.level;
+      document.querySelectorAll('.browser-tab').forEach(t => t.classList.toggle('active', t === tab));
+      renderBrowser();
+    });
+  });
+
+  document.getElementById('browser-content').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.browser-pack-btn');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const tIdx = parseInt(btn.dataset.tidx, 10);
+    const tournament = PACK_CATALOG[tIdx];
+    if (!tournament) return;
+    const allBtns = document.querySelectorAll('.browser-pack-btn');
+    allBtns.forEach(b => b.disabled = true);
+    const statusEl = document.getElementById('pdf-status');
+    try {
+      if (action === 'pack') {
+        const n = parseInt(btn.dataset.pack, 10);
+        const url = packPdfUrl(tournament, n);
+        statusEl.textContent = `Downloading Pack ${n}...`;
+        statusEl.className = 'pdf-status';
+        const buffer = await fetchWithFallback(url, statusEl);
+        document.getElementById('zip-pack-select').style.display = 'none';
+        await parsePdf(buffer, `${tournament.filePrefix} Pack ${n}.pdf`);
+      } else if (action === 'zip') {
+        const url = packZipUrl(tournament);
+        statusEl.textContent = `Downloading ${tournament.tournament} zip...`;
+        statusEl.className = 'pdf-status';
+        const buffer = await fetchWithFallback(url, statusEl);
+        await processZipBuffer(buffer);
+      }
+    } catch (err) {
+      statusEl.textContent = 'Error: ' + err.message;
+      statusEl.className = 'pdf-status error';
+    } finally {
+      allBtns.forEach(b => b.disabled = false);
+    }
+  });
+
+  // Restore previous session if any. Runs at the end so all functions and DOM
+  // elements are available.
+  loadState();
 </script>
 
 </body>

@@ -1,0 +1,7 @@
+serve.py
+commit.sh
+__pycache__/
+*.pyc
+.claude
+Cons*
+features.md
