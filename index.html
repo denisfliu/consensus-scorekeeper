@@ -1029,14 +1029,23 @@
       // Build flat rich segments (merging adjacent same-bold items, adding spaces between items on same line).
       // Each segment also carries the y-coordinate of its first item, which we use later to scroll the
       // inline PDF viewer to the actual question position (instead of always to page top).
+      // We also record `lineStartPositions` (positions in `combined` where each logical PDF line begins)
+      // alongside, used by parseQuestions to reject mid-sentence "N." matches like the "3." inside
+      // "secant of 5 pi over 3." in a Jackpot question. This is purely additive: segment structure is unchanged.
       const richSegments = [];
+      const lineStartPositions = [0]; // first line starts at combined position 0
+      let combinedLen = 0;
       let onNewLine = true;
       for (const item of richItems) {
         if (item.str === '\n') {
           if (richSegments.length > 0) {
             richSegments.push({ str: ' ', bold: false, page: item.page, y: item.y });
+            combinedLen += 1;
           }
           onNewLine = true;
+          // Record where the next line begins. May land on identical positions
+          // (e.g., consecutive blank '\n's); the Set in parseQuestions dedupes.
+          lineStartPositions.push(combinedLen);
           continue;
         }
         if (!onNewLine && richSegments.length > 0) {
@@ -1044,8 +1053,10 @@
           if (!last.str.endsWith(' ') && !item.str.startsWith(' ')) {
             if (last.bold === item.bold) {
               last.str += ' ';
+              combinedLen += 1;
             } else {
               richSegments.push({ str: ' ', bold: false, page: item.page, y: item.y });
+              combinedLen += 1;
             }
           }
         }
@@ -1055,6 +1066,7 @@
         } else {
           richSegments.push({ str: item.str, bold: item.bold, page: item.page, y: item.y });
         }
+        combinedLen += item.str.length;
       }
 
       // Build plain combined text and a position-to-segment map
@@ -1068,7 +1080,7 @@
         }
       }
 
-      const questions = parseQuestions(lines, combined, richSegments, posMap);
+      const questions = parseQuestions(lines, combined, richSegments, posMap, lineStartPositions);
       // pageNum and yPos are now set inside parseQuestions (using exact question
       // positions, not indexOf which collides with substrings like "1. " inside "11. ").
       const totalSlots = questions.reduce((sum, q) => {
@@ -1149,7 +1161,7 @@
     }).join('');
   }
 
-  function parseQuestions(lines, combined, richSegments, posMap) {
+  function parseQuestions(lines, combined, richSegments, posMap, lineStartPositions) {
     // Step 1: Build category map using bold detection from PDF fonts
     // A bold line that isn't a question, structural marker, answer/prompt line,
     // or bare number is a category title.
@@ -1222,14 +1234,37 @@
       }
     }
 
-    // Step 2: Find question positions in combined text
+    // Step 2: Find question positions in combined text.
+    // Mid-sentence numbers like the "3." in "secant of 5 pi over 3." (inside Q16
+    // of jackpot_bug.pdf) would otherwise be matched as Q3 and would corrupt the
+    // segment boundaries for surrounding real questions. We reject any match that
+    // isn't at the start of a logical PDF line.
+    //
+    // Two parts:
+    //  - Switch from `(?:^|\s)` to `\b` so the regex doesn't consume the leading
+    //    space. Old form: a bogus mid-sentence match swallowed the space the next
+    //    real question depended on, dropping it entirely from questionStarts.
+    //  - `isLineStart(p)` — accepts p when the latest preceding `lineStarts`
+    //    position is reachable through only whitespace. This permits leading
+    //    whitespace inside the first text item of a line (some PDFs emit it).
+    const lineStarts = lineStartPositions ? new Set(lineStartPositions) : null;
+    function isLineStart(p) {
+      if (!lineStarts) return true;
+      if (lineStarts.has(p)) return true;
+      for (let i = p - 1; i >= 0; i--) {
+        if (combined[i] !== ' ' && combined[i] !== '\t') return false;
+        if (lineStarts.has(i)) return true;
+      }
+      return false;
+    }
     const questionStarts = [];
-    const numRegex = /(?:^|\s)(\d{1,3})\.\s/g;
+    const numRegex = /\b(\d{1,3})\.\s/g;
     let m;
     while ((m = numRegex.exec(combined)) !== null) {
       const num = parseInt(m[1]);
-      if (num >= 1 && num <= 100) {
-        questionStarts.push({ num, pos: m.index + m[0].indexOf(m[1]) });
+      const numStartPos = m.index;
+      if (num >= 1 && num <= 100 && isLineStart(numStartPos)) {
+        questionStarts.push({ num, pos: numStartPos });
       }
     }
 
