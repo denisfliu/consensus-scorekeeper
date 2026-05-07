@@ -342,7 +342,50 @@
     padding: 16px;
     border-bottom: 2px solid #111;
     flex-shrink: 0;
+    position: relative;
   }
+  /* Custom-award dropdown anchored to the scoreboard's right side. Absolute
+     positioning keeps the team scores centered regardless of dropdown state. */
+  .custom-award {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .custom-award > summary {
+    list-style: none;
+    cursor: pointer;
+    background: #e0e0e0;
+    color: #111;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    border: 1px solid #ccc;
+  }
+  .custom-award > summary::-webkit-details-marker { display: none; }
+  .custom-award > summary::marker { content: ''; }
+  .custom-award > summary:hover { background: #ccc; }
+  .custom-award-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 12px;
+    min-width: 360px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 100;
+  }
+  .custom-award-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .custom-award-row label { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
+  .custom-award-row input, .custom-award-row select {
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 0.9rem;
+  }
+  .custom-award-hint { font-size: 0.8rem; color: #666; margin-top: 6px; }
   .team-score {
     text-align: center;
     min-width: 160px;
@@ -364,10 +407,17 @@
   }
 
   /* Question content area */
-  .question-content {
+  .question-content-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
     padding: 12px 24px;
     border-bottom: 1px solid #ddd;
     flex-shrink: 0;
+  }
+  .question-content {
+    flex: 1 1 50%;
+    min-width: 0; /* allow text to shrink in narrow columns instead of pushing layout */
   }
   .question-category-label {
     font-size: 1.1rem;
@@ -556,7 +606,8 @@
     font-weight: 600;
   }
   .inline-pdf {
-    margin: 8px 0 12px;
+    flex: 1 1 50%;
+    min-width: 0;
     border: 1px solid #ccc;
     border-radius: 6px;
     background: #fafafa;
@@ -685,24 +736,39 @@
           <div class="team-name" id="game-team-b-name">Team B</div>
           <div class="score" id="score-b">0</div>
         </div>
+        <details class="custom-award" id="custom-award">
+          <summary title="Award arbitrary points to any player on any question">+/- Points &#9662;</summary>
+          <div class="custom-award-panel">
+            <div style="font-weight:600;margin-bottom:6px">Custom point award</div>
+            <div class="custom-award-row">
+              <select id="dt-player" style="flex:1;min-width:160px"></select>
+              <label>Q# <input id="dt-question" type="number" min="1" style="width:64px"></label>
+              <label>Pts <input id="dt-points" type="number" style="width:72px"></label>
+              <button class="btn" onclick="applyCustomAward()">Apply</button>
+            </div>
+            <div class="custom-award-hint">No restrictions. Negative values subtract. Use Undo Last to reverse.</div>
+          </div>
+        </details>
       </div>
 
-      <!-- Question content -->
-      <div class="question-content">
-        <div class="question-category-label" id="q-category"></div>
-        <div class="question-instructions" id="q-instructions" style="display:none"></div>
-        <div class="question-text" id="q-text"></div>
-        <div class="question-answer" id="q-answer"></div>
-        <div id="q-answered-by" style="display:none;margin:4px 0;font-size:0.9rem;color:#555;"></div>
-        <div id="streak-status" style="display:none;margin:6px 0;padding:6px 10px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:0.95rem;"></div>
-        <div class="question-nav">
-          <button class="btn" onclick="prevQuestion()">&larr; Prev</button>
-          <button class="btn" onclick="skipQuestion()">Skip (0)</button>
-          <button class="btn" onclick="nextQuestion()">Next &rarr;</button>
+      <!-- Question content + inline PDF as side-by-side columns. The inline-pdf
+           is hidden by default (display:none); when shown, the two columns split
+           the row 50/50. When hidden, the question-content takes full width. -->
+      <div class="question-content-row">
+        <div class="question-content">
+          <div class="question-category-label" id="q-category"></div>
+          <div class="question-instructions" id="q-instructions" style="display:none"></div>
+          <div class="question-text" id="q-text"></div>
+          <div class="question-answer" id="q-answer"></div>
+          <div id="q-answered-by" style="display:none;margin:4px 0;font-size:0.9rem;color:#555;"></div>
+          <div id="streak-status" style="display:none;margin:6px 0;padding:6px 10px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:0.95rem;"></div>
+          <div class="question-nav">
+            <button class="btn" onclick="prevQuestion()">&larr; Prev</button>
+            <button class="btn" onclick="skipQuestion()">Skip (0)</button>
+            <button class="btn" onclick="nextQuestion()">Next &rarr;</button>
+          </div>
         </div>
 
-        <!-- Inline PDF viewer: shows the current question's page underneath the
-             question nav. Click Expand to open the fullscreen overlay. -->
         <div class="inline-pdf" id="inline-pdf" style="display:none">
           <div class="inline-pdf-bar">
             <button onclick="inlinePdfPrev()" id="inline-pdf-prev">&larr; Page</button>
@@ -737,15 +803,6 @@
           <summary>Dev Tools &#9662;</summary>
           <div class="dev-tools-panel">
             <button class="btn" onclick="reparseCurrentPdf()">Re-parse current PDF</button>
-            <hr>
-            <div style="font-weight:600;margin-bottom:6px">Custom point award</div>
-            <div class="dev-tools-row">
-              <select id="dt-player" style="flex:1;min-width:140px"></select>
-              <label>Q# <input id="dt-question" type="number" min="1" style="width:60px"></label>
-              <label>Pts <input id="dt-points" type="number" style="width:70px"></label>
-              <button class="btn" onclick="applyCustomAward()">Apply</button>
-            </div>
-            <div class="dev-tools-hint">No restrictions. Negative values subtract. Use Undo Last to reverse.</div>
           </div>
         </details>
         <button class="btn back-btn" onclick="backToSetup()">Back to Setup</button>
@@ -1967,11 +2024,13 @@
     state.history.push({ team, playerIndex, points, question: questionIdx, isCustom: true });
     state.answeredQuestions.add(questionIdx);
     document.getElementById('dt-points').value = '';
-    document.getElementById('dev-tools').open = false;
+    const ca = document.getElementById('custom-award');
+    if (ca) ca.open = false;
     renderGame();
   }
 
-  function populateDevTools() {
+  // Populate the custom-award dropdown's player list and default Q# whenever it opens.
+  function populateCustomAward() {
     const playerSel = document.getElementById('dt-player');
     if (!playerSel) return;
     const prev = playerSel.value;
@@ -2268,11 +2327,11 @@
   window.reparseCurrentPdf = reparseCurrentPdf;
   window.applyCustomAward = applyCustomAward;
 
-  // Refresh dev-tools panel contents whenever it opens.
-  const devToolsEl = document.getElementById('dev-tools');
-  if (devToolsEl) {
-    devToolsEl.addEventListener('toggle', () => {
-      if (devToolsEl.open) populateDevTools();
+  // Refresh the custom-award dropdown's player list + default Q# each time it opens.
+  const customAwardEl = document.getElementById('custom-award');
+  if (customAwardEl) {
+    customAwardEl.addEventListener('toggle', () => {
+      if (customAwardEl.open) populateCustomAward();
     });
   }
   window.clearAndReload = () => {
