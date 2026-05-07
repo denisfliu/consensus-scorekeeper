@@ -2060,21 +2060,28 @@
   }
 
   async function fetchWithFallback(url, statusEl) {
-    const attempts = [
-      ...CORS_PROXIES.map((makeProxy, i) => ({
-        label: i === 0 && IS_LOCAL_SERVER ? 'local proxy' : `proxy ${i + (IS_LOCAL_SERVER ? 0 : 1)}`,
-        fn: () => fetch(makeProxy(url)),
-      })),
-      { label: 'direct', fn: () => fetch(url) },
-    ];
+    const ATTEMPT_TIMEOUT_MS = 12000;
+    const directAttempt = { label: 'direct', fn: (signal) => fetch(url, { signal }) };
+    const proxyAttempts = CORS_PROXIES.map((makeProxy, i) => ({
+      label: i === 0 && IS_LOCAL_SERVER ? 'local proxy' : `proxy ${i + (IS_LOCAL_SERVER ? 0 : 1)}`,
+      fn: (signal) => fetch(makeProxy(url), { signal }),
+    }));
+    // consensustrivia.com serves PDFs with permissive CORS, so direct is always fastest.
+    // Proxies (local Python proxy on localhost, then public CORS proxies) stay in the chain as
+    // fallbacks for environments where direct is blocked.
+    const attempts = [directAttempt, ...proxyAttempts];
     for (const attempt of attempts) {
       if (statusEl) statusEl.textContent = `Downloading via ${attempt.label}...`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT_MS);
       try {
-        const r = await attempt.fn();
+        const r = await attempt.fn(ctrl.signal);
         if (!r.ok) continue;
         const buffer = await r.arrayBuffer();
         if (looksLikePdfOrZip(buffer)) return buffer;
-      } catch (e) { /* try next */ }
+      } catch (e) { /* try next */ } finally {
+        clearTimeout(timer);
+      }
     }
     throw new Error('All download attempts failed (CORS blocked). Run this page from a local web server (e.g. `python -m http.server`) or download the pack manually from consensustrivia.com and upload it.');
   }
