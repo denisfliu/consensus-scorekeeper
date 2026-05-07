@@ -540,6 +540,21 @@
     font-size: 0.9rem;
   }
   .dev-tools-hint { font-size: 0.8rem; color: #666; margin-top: 6px; }
+  .question-instructions {
+    background: #fff8e1;
+    border: 1px solid #f0d878;
+    border-left: 4px solid #d4a017;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 6px 0 10px;
+    font-size: 0.95rem;
+    color: #5a4500;
+    line-height: 1.4;
+  }
+  .question-instructions::before {
+    content: "Category instructions: ";
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
@@ -635,6 +650,7 @@
       <!-- Question content -->
       <div class="question-content">
         <div class="question-category-label" id="q-category"></div>
+        <div class="question-instructions" id="q-instructions" style="display:none"></div>
         <div class="question-text" id="q-text"></div>
         <div class="question-answer" id="q-answer"></div>
         <div id="q-answered-by" style="display:none;margin:4px 0;font-size:0.9rem;color:#555;"></div>
@@ -1083,6 +1099,8 @@
     // or bare number is a category title.
     const categoryMap = {};
     let currentCategory = null;
+    let currentInstructions = '';   // accumulated prose between a category title and its first question
+    let captureInstructions = false; // toggled true after a bold category title; false on first qMatch
     let categoryQuestionCount = 0;
     let inSplit = false;
     let splitCount = 0;
@@ -1095,8 +1113,13 @@
         const num = parseInt(qMatch[1]);
         if (num >= 1 && num <= 100 && currentCategory) {
           categoryQuestionCount++;
-          categoryMap[num] = { category: currentCategory, posInCategory: categoryQuestionCount };
+          categoryMap[num] = {
+            category: currentCategory,
+            posInCategory: categoryQuestionCount,
+            categoryInstructions: currentInstructions || null,
+          };
         }
+        captureInstructions = false;
         continue;
       }
       // Skip structural markers (END OF, QUARTER labels, etc.)
@@ -1112,6 +1135,8 @@
       if (/^Splits?:/i.test(text)) {
         inSplit = true;
         splitCount = 0;
+        captureInstructions = false;
+        currentInstructions = '';
         continue;
       }
 
@@ -1125,14 +1150,19 @@
           currentCategory = text;
         }
         categoryQuestionCount = 0;
+        currentInstructions = '';
+        captureInstructions = true;
+        // A non-split bold category ends split mode after 2 sub-categories.
+        if (inSplit && splitCount >= 2) inSplit = false;
+        continue;
       }
 
-      // A non-split bold category ends split mode
-      // (splits only cover the two sub-categories immediately after the Splits: header)
-      // We detect end of split when we hit a bold line that follows questions from the 2nd sub-category
-      // Simple heuristic: after 2 sub-categories, exit split mode
-      if (inSplit && splitCount >= 2 && line.isBold) {
-        inSplit = false;
+      // Non-bold prose line that survived all skips. If we just saw a category
+      // title and haven't hit the first question yet, treat it as category
+      // instructions for the moderator (e.g., "Set of 3: Before and After"
+      // explains the answer format before Q63). Otherwise ignore.
+      if (captureInstructions) {
+        currentInstructions = (currentInstructions ? currentInstructions + ' ' : '') + text;
       }
     }
 
@@ -1269,6 +1299,7 @@
               answerHtml,
               category: catInfo ? catInfo.category : null,
               posInCategory: catInfo ? catInfo.posInCategory : null,
+              categoryInstructions: catInfo ? (catInfo.categoryInstructions || null) : null,
               streakRange: isStreakQ ? { start: start.num, end: streakEnd } : null,
             });
           }
@@ -1285,6 +1316,7 @@
               answerHtml: '<i>(see final part for answer)</i>',
               category: catInfo ? catInfo.category : null,
               posInCategory: catInfo ? catInfo.posInCategory : null,
+              categoryInstructions: catInfo ? (catInfo.categoryInstructions || null) : null,
             });
           }
         }
@@ -1410,6 +1442,23 @@
   function renderQuestion() {
     const q = state.questions[state.currentQuestion];
     const hasContent = state.hasQuestions && q && q.question;
+
+    // Category instructions (e.g., "Set of 3: Before and After" explainer text).
+    // Shown on every question in a category that has them.
+    const instrEl = document.getElementById('q-instructions');
+    let instrText = q && q.categoryInstructions;
+    if (!instrText && q && q.isStreak && q.streakGroupStart != null) {
+      // Streak slots store category data on the source question; fall back to that.
+      const sg = state.streakGroups[q.streakGroupStart];
+      instrText = sg && sg.sourceQuestion && sg.sourceQuestion.categoryInstructions;
+    }
+    if (instrText) {
+      instrEl.textContent = instrText;
+      instrEl.style.display = 'block';
+    } else {
+      instrEl.style.display = 'none';
+      instrEl.textContent = '';
+    }
 
     if (q && q.isStreak) {
       // Streak group display
