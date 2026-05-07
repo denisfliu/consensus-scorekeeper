@@ -1797,7 +1797,7 @@
       const group = state.streakGroups[q.streakGroupStart];
       if (group && group.end + 1 < state.questions.length) {
         state.currentQuestion = group.end + 1;
-        renderQuestion();
+        renderGame();
       }
     } else if (state.currentQuestion < state.questions.length - 1) {
       let next = state.currentQuestion + 1;
@@ -1806,7 +1806,7 @@
         next++;
       }
       state.currentQuestion = next;
-      renderQuestion();
+      renderGame();
     }
   }
 
@@ -1823,7 +1823,7 @@
         prev = pq.streakGroupStart;
       }
       state.currentQuestion = prev;
-      renderQuestion();
+      renderGame();
     }
   }
 
@@ -1837,7 +1837,7 @@
       index = q.streakGroupStart;
     }
     state.currentQuestion = index;
-    renderQuestion();
+    renderGame();
   }
 
   function renderPlayerPanel(team) {
