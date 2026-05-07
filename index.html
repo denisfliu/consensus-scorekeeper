@@ -555,6 +555,46 @@
     content: "Category instructions: ";
     font-weight: 600;
   }
+  .inline-pdf {
+    margin: 8px 0 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fafafa;
+    padding: 6px;
+  }
+  .inline-pdf-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+  }
+  .inline-pdf-bar button {
+    background: #e0e0e0;
+    border: 1px solid #bbb;
+    padding: 2px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .inline-pdf-bar button:hover { background: #ccc; }
+  .inline-pdf-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .inline-pdf-canvas-wrap {
+    height: 320px;
+    overflow: auto;
+    background: #888;
+    text-align: center;
+    border-radius: 4px;
+    resize: vertical;
+    min-height: 120px;
+    max-height: 80vh;
+  }
+  .inline-pdf-canvas-wrap canvas {
+    display: block;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
 </style>
 </head>
 <body>
@@ -660,6 +700,21 @@
           <button class="btn" onclick="skipQuestion()">Skip (0)</button>
           <button class="btn" onclick="nextQuestion()">Next &rarr;</button>
         </div>
+
+        <!-- Inline PDF viewer: shows the current question's page underneath the
+             question nav. Click Expand to open the fullscreen overlay. -->
+        <div class="inline-pdf" id="inline-pdf" style="display:none">
+          <div class="inline-pdf-bar">
+            <button onclick="inlinePdfPrev()" id="inline-pdf-prev">&larr; Page</button>
+            <span id="inline-pdf-label">Page 1 / 1</span>
+            <button onclick="inlinePdfNext()" id="inline-pdf-next">Page &rarr;</button>
+            <span style="flex:1"></span>
+            <button onclick="viewPdf()" title="Open fullscreen view">Expand &#x2197;</button>
+          </div>
+          <div class="inline-pdf-canvas-wrap">
+            <canvas id="inline-pdf-canvas"></canvas>
+          </div>
+        </div>
       </div>
 
       <!-- Player panels -->
@@ -676,7 +731,7 @@
         <span><kbd>&larr;</kbd> Prev</span>
         <span><kbd>Ctrl+Z</kbd> Undo</span>
         <button class="btn undo-btn" id="undo-btn" onclick="undoLast()" disabled>Undo Last</button>
-        <button class="btn" onclick="viewPdf()">View PDF</button>
+        <button class="btn" id="toggle-inline-pdf-btn" onclick="toggleInlinePdf()">Hide PDF</button>
         <button class="btn" onclick="exportCsv()">Export CSV</button>
         <details class="dev-tools" id="dev-tools">
           <summary>Dev Tools &#9662;</summary>
@@ -700,9 +755,14 @@
 </div>
 
 <script type="module">
-  const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-  window.pdfjsLib = pdfjsLib;
+  // Module scripts are deferred, so this runs after the regular <script> below
+  // (where loadState() lives). Expose a promise that downstream callers can
+  // await before touching window.pdfjsLib.
+  window.pdfjsReady = (async () => {
+    const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+    window.pdfjsLib = pdfjsLib;
+  })();
 </script>
 
 <script>
@@ -718,7 +778,8 @@
     zipPacks: null,
     packName: null,
     pdfBytes: null,
-    pdfViewer: { doc: null, currentPage: 1 },
+    pdfViewer: { doc: null, currentPage: 1, inlinePage: null },
+    inlinePdfHidden: false,
   };
 
   // ==================== SETUP ====================
@@ -908,12 +969,12 @@
         for (const g of groups) {
           g.items.sort((a, b) => a.x - b.x);
           for (const it of g.items) {
-            allItems.push({ str: it.str, font: it.font, page: i });
+            allItems.push({ str: it.str, font: it.font, page: i, y: it.y });
             if (it.str) {
               fontUsage[it.font] = (fontUsage[it.font] || 0) + it.str.replace(/\s/g, '').length;
             }
           }
-          allItems.push({ str: '\n', font: null, page: i });
+          allItems.push({ str: '\n', font: null, page: i, y: g.y });
         }
       }
 
@@ -929,6 +990,7 @@
         str: item.str,
         bold: item.font ? boldFonts.has(item.font) : false,
         page: item.page || 1,
+        y: item.y,
       }));
 
       // Build lines with bold info: { text, isBold }
@@ -964,13 +1026,15 @@
         });
       }
 
-      // Build flat rich segments (merging adjacent same-bold items, adding spaces between items on same line)
+      // Build flat rich segments (merging adjacent same-bold items, adding spaces between items on same line).
+      // Each segment also carries the y-coordinate of its first item, which we use later to scroll the
+      // inline PDF viewer to the actual question position (instead of always to page top).
       const richSegments = [];
       let onNewLine = true;
       for (const item of richItems) {
         if (item.str === '\n') {
           if (richSegments.length > 0) {
-            richSegments.push({ str: ' ', bold: false, page: item.page });
+            richSegments.push({ str: ' ', bold: false, page: item.page, y: item.y });
           }
           onNewLine = true;
           continue;
@@ -981,7 +1045,7 @@
             if (last.bold === item.bold) {
               last.str += ' ';
             } else {
-              richSegments.push({ str: ' ', bold: false, page: item.page });
+              richSegments.push({ str: ' ', bold: false, page: item.page, y: item.y });
             }
           }
         }
@@ -989,7 +1053,7 @@
         if (richSegments.length > 0 && richSegments[richSegments.length - 1].bold === item.bold) {
           richSegments[richSegments.length - 1].str += item.str;
         } else {
-          richSegments.push({ str: item.str, bold: item.bold, page: item.page });
+          richSegments.push({ str: item.str, bold: item.bold, page: item.page, y: item.y });
         }
       }
 
@@ -1005,16 +1069,8 @@
       }
 
       const questions = parseQuestions(lines, combined, richSegments, posMap);
-      // Attach page number to each parsed question by mapping its position in `combined`
-      // back to a richSegment, which carries the source page index.
-      for (const q of questions) {
-        const needle = `${q.num}. `;
-        const pos = combined.indexOf(needle);
-        if (pos !== -1 && posMap[pos]) {
-          const seg = richSegments[posMap[pos].segIdx];
-          if (seg && seg.page) q.pageNum = seg.page;
-        }
-      }
+      // pageNum and yPos are now set inside parseQuestions (using exact question
+      // positions, not indexOf which collides with substrings like "1. " inside "11. ").
       const totalSlots = questions.reduce((sum, q) => {
         if (q.streakRange) return sum + (q.streakRange.end - q.streakRange.start + 1);
         return sum + 1;
@@ -1202,6 +1258,13 @@
       const segment = combined.substring(start.pos, endPos);
       const catInfo = categoryMap[start.num] || null;
       const nextTitle = nextCategoryTitle(i, catInfo);
+      // Look up source page + Y position from the rich segment that contains this
+      // question's "N. " marker. Used to scroll the inline PDF to the question.
+      let qPageNum = null, qYPos = null;
+      if (posMap[start.pos]) {
+        const seg = richSegments[posMap[start.pos].segIdx];
+        if (seg) { qPageNum = seg.page || null; qYPos = (typeof seg.y === 'number') ? seg.y : null; }
+      }
 
       const aMatch = segment.match(/\bA:\s*(.*)/);
       if (aMatch) {
@@ -1301,6 +1364,8 @@
               posInCategory: catInfo ? catInfo.posInCategory : null,
               categoryInstructions: catInfo ? (catInfo.categoryInstructions || null) : null,
               streakRange: isStreakQ ? { start: start.num, end: streakEnd } : null,
+              pageNum: qPageNum,
+              yPos: qYPos,
             });
           }
         }
@@ -1317,6 +1382,8 @@
               category: catInfo ? catInfo.category : null,
               posInCategory: catInfo ? catInfo.posInCategory : null,
               categoryInstructions: catInfo ? (catInfo.categoryInstructions || null) : null,
+              pageNum: qPageNum,
+              yPos: qYPos,
             });
           }
         }
@@ -1442,6 +1509,9 @@
   function renderQuestion() {
     const q = state.questions[state.currentQuestion];
     const hasContent = state.hasQuestions && q && q.question;
+
+    // Inline PDF auto-follows the current question's page (no-op if no PDF loaded).
+    syncInlinePdfToQuestion();
 
     // Category instructions (e.g., "Set of 3: Before and After" explainer text).
     // Shown on every question in a category that has them.
@@ -1980,6 +2050,7 @@
         streakScoring: state.streakScoring,
         packName: state.packName,
         gameActive: isGameVisible(),
+        inlinePdfHidden: state.inlinePdfHidden,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     } catch (e) {
@@ -2057,6 +2128,7 @@
       }
       state.streakScoring = ss;
       state.packName = snap.packName || null;
+      state.inlinePdfHidden = !!snap.inlinePdfHidden;
       rebuildStreakGroups();
 
       const pdfBytes = loadPdfBytes();
@@ -2157,6 +2229,7 @@
   window.exportCsv = exportCsv;
   window.viewPdf = viewPdf;
   window.closePdfViewer = closePdfViewer;
+  window.toggleInlinePdf = toggleInlinePdf;
   window.reparseCurrentPdf = reparseCurrentPdf;
   window.applyCustomAward = applyCustomAward;
 
@@ -2174,20 +2247,34 @@
   };
   window.pdfPagePrev = () => renderPdfPage(state.pdfViewer.currentPage - 1);
   window.pdfPageNext = () => renderPdfPage(state.pdfViewer.currentPage + 1);
+  window.inlinePdfPrev = () => renderInlinePdf((state.pdfViewer.inlinePage || 1) - 1);
+  window.inlinePdfNext = () => renderInlinePdf((state.pdfViewer.inlinePage || 1) + 1);
 
   // ==================== PDF VIEWER ====================
+  // Lazily loads the pdf.js document on demand. Both the inline viewer and the
+  // fullscreen overlay share state.pdfViewer.doc.
+  async function ensurePdfLoaded() {
+    if (state.pdfViewer.doc) return state.pdfViewer.doc;
+    if (!state.pdfBytes) return null;
+    // window.pdfjsLib is set by a deferred module script, which may not have
+    // finished running on first call (e.g., loadState on page refresh).
+    if (window.pdfjsReady) await window.pdfjsReady;
+    const dataCopy = state.pdfBytes.slice().buffer;
+    state.pdfViewer.doc = await window.pdfjsLib.getDocument({ data: dataCopy }).promise;
+    return state.pdfViewer.doc;
+  }
+
   async function viewPdf() {
     if (!state.pdfBytes) {
       alert('No PDF loaded — upload or browse a packet first.');
       return;
     }
-    if (!state.pdfViewer.doc) {
-      // Pass a fresh copy: pdf.js detaches the buffer it's given.
-      const dataCopy = state.pdfBytes.slice().buffer;
-      state.pdfViewer.doc = await window.pdfjsLib.getDocument({ data: dataCopy }).promise;
-    }
-    const q = state.questions[state.currentQuestion];
-    const targetPage = (q && q.pageNum) || 1;
+    await ensurePdfLoaded();
+    // Open at whichever page the inline viewer is showing, if any.
+    const targetPage = state.pdfViewer.inlinePage
+      || state.pdfViewer.currentPage
+      || (state.questions[state.currentQuestion] && state.questions[state.currentQuestion].pageNum)
+      || 1;
     document.getElementById('pdf-overlay').classList.add('open');
     await renderPdfPage(targetPage);
   }
@@ -2213,6 +2300,100 @@
 
   function closePdfViewer() {
     document.getElementById('pdf-overlay').classList.remove('open');
+    // Sync the inline viewer to wherever the fullscreen ended up.
+    const last = state.pdfViewer.currentPage;
+    if (last && last !== state.pdfViewer.inlinePage) renderInlinePdf(last);
+  }
+
+  // Renders pageNum into the inline canvas, scaled to fit the inline width.
+  // Called from renderQuestion (auto-follow) and the inline page nav buttons.
+  async function renderInlinePdf(pageNum) {
+    const inline = document.getElementById('inline-pdf');
+    if (!inline) return;
+    const doc = await ensurePdfLoaded();
+    if (!doc) {
+      inline.style.display = 'none';
+      return;
+    }
+    inline.style.display = 'block';
+    if (pageNum < 1) pageNum = 1;
+    if (pageNum > doc.numPages) pageNum = doc.numPages;
+    state.pdfViewer.inlinePage = pageNum;
+    const page = await doc.getPage(pageNum);
+    const wrap = inline.querySelector('.inline-pdf-canvas-wrap');
+    const targetW = Math.max(300, (wrap && wrap.clientWidth ? wrap.clientWidth : 600) - 4);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = targetW / baseViewport.width;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.getElementById('inline-pdf-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    document.getElementById('inline-pdf-label').textContent = `Page ${pageNum} / ${doc.numPages}`;
+    document.getElementById('inline-pdf-prev').disabled = pageNum <= 1;
+    document.getElementById('inline-pdf-next').disabled = pageNum >= doc.numPages;
+    // Save scale + base height so syncInlinePdfToQuestion can convert PDF-y to canvas-y.
+    state.pdfViewer.inlineScale = scale;
+    state.pdfViewer.inlineBaseHeight = baseViewport.height;
+    if (wrap) wrap.scrollTop = 0;
+  }
+
+  // Scroll the inline wrap so the current question's text is near the top.
+  // PDF y-coordinates are bottom-up; canvas y is top-down — convert via the
+  // page height (in PDF units) and the render scale.
+  function scrollInlineToQuestion(q) {
+    const wrap = document.querySelector('#inline-pdf .inline-pdf-canvas-wrap');
+    if (!wrap) return;
+    if (!q || typeof q.yPos !== 'number') {
+      wrap.scrollTop = 0;
+      return;
+    }
+    const baseH = state.pdfViewer.inlineBaseHeight;
+    const scale = state.pdfViewer.inlineScale;
+    if (!baseH || !scale) { wrap.scrollTop = 0; return; }
+    // q.yPos is the PDF baseline (text bottom). Glyphs extend up from there.
+    // Subtract ~30px so the full line + a bit of context above sits below the
+    // top of the visible area instead of being clipped.
+    const canvasY = (baseH - q.yPos) * scale;
+    wrap.scrollTop = Math.max(0, canvasY - 30);
+  }
+
+  // Auto-follow the current question's page in the inline viewer.
+  async function syncInlinePdfToQuestion() {
+    const inline = document.getElementById('inline-pdf');
+    if (!state.pdfBytes || state.inlinePdfHidden) {
+      if (inline) inline.style.display = 'none';
+      updateInlinePdfButton();
+      return;
+    }
+    const q = state.questions[state.currentQuestion];
+    const target = (q && q.pageNum) || 1;
+    if (state.pdfViewer.inlinePage !== target) await renderInlinePdf(target);
+    scrollInlineToQuestion(q);
+    updateInlinePdfButton();
+  }
+
+  // Sync the controls-bar toggle button label and disabled state.
+  function updateInlinePdfButton() {
+    const btn = document.getElementById('toggle-inline-pdf-btn');
+    if (!btn) return;
+    btn.disabled = !state.pdfBytes;
+    btn.textContent = state.inlinePdfHidden ? 'Show PDF' : 'Hide PDF';
+  }
+
+  function toggleInlinePdf() {
+    state.inlinePdfHidden = !state.inlinePdfHidden;
+    if (state.inlinePdfHidden) {
+      const inline = document.getElementById('inline-pdf');
+      if (inline) inline.style.display = 'none';
+      updateInlinePdfButton();
+    } else {
+      // Force a re-render of the current question's page on re-show.
+      state.pdfViewer.inlinePage = null;
+      syncInlinePdfToQuestion();
+    }
+    if (typeof saveState === 'function') saveState();
   }
 
   // Esc + arrow keys inside the overlay
