@@ -504,6 +504,42 @@
     color: #111;
   }
   .back-btn:hover { background: #ccc; }
+  .dev-tools { position: relative; display: inline-block; }
+  .dev-tools > summary {
+    list-style: none;
+    cursor: pointer;
+    background: #e0e0e0;
+    color: #111;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    border: 1px solid #ccc;
+  }
+  .dev-tools > summary::-webkit-details-marker { display: none; }
+  .dev-tools > summary::marker { content: ''; }
+  .dev-tools > summary:hover { background: #ccc; }
+  .dev-tools-panel {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 12px;
+    min-width: 360px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 100;
+  }
+  .dev-tools-panel hr { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
+  .dev-tools-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .dev-tools-row label { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
+  .dev-tools-row input, .dev-tools-row select {
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 0.9rem;
+  }
+  .dev-tools-hint { font-size: 0.8rem; color: #666; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -626,6 +662,21 @@
         <button class="btn undo-btn" id="undo-btn" onclick="undoLast()" disabled>Undo Last</button>
         <button class="btn" onclick="viewPdf()">View PDF</button>
         <button class="btn" onclick="exportCsv()">Export CSV</button>
+        <details class="dev-tools" id="dev-tools">
+          <summary>Dev Tools &#9662;</summary>
+          <div class="dev-tools-panel">
+            <button class="btn" onclick="reparseCurrentPdf()">Re-parse current PDF</button>
+            <hr>
+            <div style="font-weight:600;margin-bottom:6px">Custom point award</div>
+            <div class="dev-tools-row">
+              <select id="dt-player" style="flex:1;min-width:140px"></select>
+              <label>Q# <input id="dt-question" type="number" min="1" style="width:60px"></label>
+              <label>Pts <input id="dt-points" type="number" style="width:70px"></label>
+              <button class="btn" onclick="applyCustomAward()">Apply</button>
+            </div>
+            <div class="dev-tools-hint">No restrictions. Negative values subtract. Use Undo Last to reverse.</div>
+          </div>
+        </details>
         <button class="btn back-btn" onclick="backToSetup()">Back to Setup</button>
       </div>
     </div><!-- /main-content -->
@@ -992,7 +1043,6 @@
       if (idxLower !== -1) text = text.substring(0, idxLower);
     }
     text = text.replace(/\s+(?:Set of \d+.*|Splits?:.*|PACK \d+.*|Streaks?.*|Streak)$/i, '');
-    text = text.replace(/\s+(?:Antarctica|Pokemon|Breads of the World|The History of Shakespeare|Nobel Prizes?|MTV)\s*$/i, '');
     return text.trim();
   }
 
@@ -1097,12 +1147,31 @@
       }
     }
 
+    // Returns the bare title of the next question's category if it differs from the current one.
+    // Used to strip a trailing category title that bleeds into the prior answer's text — happens
+    // between split sub-categories, where (unlike normal categories) there is no "Set of N" marker
+    // between groups for cleanTrailing's greedy regex to absorb.
+    function nextCategoryTitle(curIdx, curCat) {
+      if (curIdx + 1 >= questionStarts.length) return null;
+      const nextCat = categoryMap[questionStarts[curIdx + 1].num];
+      if (!nextCat || !nextCat.category) return null;
+      if (curCat && nextCat.category === curCat.category) return null;
+      return nextCat.category.replace(/^Splits \d+:\s*/, '').trim() || null;
+    }
+    function stripTrailingTitle(text, title) {
+      if (!title) return text;
+      const t = text.replace(/\s+$/, '');
+      if (t.endsWith(title)) return t.substring(0, t.length - title.length).replace(/\s+$/, '');
+      return text;
+    }
+
     const questions = [];
     for (let i = 0; i < questionStarts.length; i++) {
       const start = questionStarts[i];
       const endPos = i + 1 < questionStarts.length ? questionStarts[i + 1].pos : combined.length;
       const segment = combined.substring(start.pos, endPos);
       const catInfo = categoryMap[start.num] || null;
+      const nextTitle = nextCategoryTitle(i, catInfo);
 
       const aMatch = segment.match(/\bA:\s*(.*)/);
       if (aMatch) {
@@ -1122,7 +1191,7 @@
 
           // Also get plain answer for cleaning
           let answerPlain = combined.substring(ansStart, endPos).trim().replace(/\s+/g, ' ');
-          answerPlain = cleanTrailing(answerPlain);
+          answerPlain = stripTrailingTitle(cleanTrailing(answerPlain), nextTitle);
 
           // Check for multiple A: answers (common in streaks)
           const aMatches = [];
@@ -1145,7 +1214,8 @@
               while (as2 < endPos && combined[as2] === ' ') as2++;
               const aEnd = ai + 1 < aMatches.length ? start.pos + aMatches[ai + 1] : endPos;
               const rich = extractRichRange(as2, aEnd, richSegments, posMap);
-              const plainText = cleanTrailing(combined.substring(as2, aEnd).trim().replace(/\s+/g, ' '));
+              let plainText = cleanTrailing(combined.substring(as2, aEnd).trim().replace(/\s+/g, ' '));
+              if (ai === aMatches.length - 1) plainText = stripTrailingTitle(plainText, nextTitle);
               // Trim rich HTML to match cleaned plain text length
               const cleanLen = plainText.length;
               let tLen = 0;
@@ -1244,6 +1314,24 @@
   }
 
   // ==================== GAME ====================
+  // Pads `state.questions` from the flat parsed list to a slot-indexed array
+  // (slot i = question number i+1). Called by startGame and by reparseCurrentPdf.
+  function padQuestionsToSlots() {
+    if (state.hasQuestions && state.questions.length > 0) {
+      const parsed = new Map(state.questions.map(q => [q.num, q]));
+      const maxNum = Math.max(100, ...state.questions.map(q => q.num));
+      state.questions = [];
+      for (let i = 1; i <= maxNum; i++) {
+        state.questions.push(parsed.get(i) || { num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null, isMissing: true });
+      }
+    } else {
+      state.questions = [];
+      for (let i = 1; i <= 100; i++) {
+        state.questions.push({ num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null });
+      }
+    }
+  }
+
   function startGame() {
     state.teamA.name = document.getElementById('team-a-name').value.trim() || 'Team A';
     state.teamB.name = document.getElementById('team-b-name').value.trim() || 'Team B';
@@ -1259,19 +1347,7 @@
     state.history = [];
     state.answeredQuestions = new Set();
 
-    if (state.hasQuestions && state.questions.length > 0) {
-      const parsed = new Map(state.questions.map(q => [q.num, q]));
-      const maxNum = Math.max(100, ...state.questions.map(q => q.num));
-      state.questions = [];
-      for (let i = 1; i <= maxNum; i++) {
-        state.questions.push(parsed.get(i) || { num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null, isMissing: true });
-      }
-    } else {
-      state.questions = [];
-      for (let i = 1; i <= 100; i++) {
-        state.questions.push({ num: i, question: '', answer: '', answerHtml: '', category: null, posInCategory: null });
-      }
-    }
+    padQuestionsToSlots();
 
     // Build streak groups from parsed streakRange data
     // A streak is a single parsed question that spans multiple question numbers
@@ -1359,14 +1435,22 @@
       document.getElementById('q-text').innerHTML = contentHtml;
       document.getElementById('q-answer').innerHTML = '';
 
-      // Show streak scoring info
+      // Show streak scoring info — one row per team that has accumulated points.
       const streakKey = groupStart;
       const streakInfo = state.streakScoring[streakKey];
       const streakStatusEl = document.getElementById('streak-status');
-      if (streakInfo && streakInfo.totalPoints > 0) {
-        const allPlayers = [...state.teamA.players, ...state.teamB.players];
-        const pName = allPlayers[streakInfo.globalPlayerIdx]?.name || '?';
-        streakStatusEl.innerHTML = `<strong>${escapeHtml(pName)}</strong> has <strong>${streakInfo.totalPoints}</strong> points on this streak &nbsp; <button class="btn" style="padding:3px 10px;font-size:0.85rem;background:#e0e0e0" onclick="resetStreak(${streakKey})">Reset to 0</button>`;
+      const rows = [];
+      if (streakInfo) {
+        for (const t of ['a', 'b']) {
+          const e = streakInfo[t];
+          if (!e || e.totalPoints <= 0) continue;
+          const tObj = t === 'a' ? state.teamA : state.teamB;
+          const pName = tObj.players[e.playerIndex]?.name || '?';
+          rows.push(`<div><strong>${escapeHtml(pName)}</strong> has <strong>${e.totalPoints}</strong> points on this streak &nbsp; <button class="btn" style="padding:3px 10px;font-size:0.85rem;background:#e0e0e0" onclick="resetStreak(${streakKey}, '${t}')">Reset to 0</button></div>`);
+        }
+      }
+      if (rows.length) {
+        streakStatusEl.innerHTML = rows.join('');
         streakStatusEl.style.display = 'block';
       } else {
         streakStatusEl.innerHTML = '';
@@ -1463,14 +1547,18 @@
             answeredTeamClass = info.teamLetter === 'a' ? 'answered-a' : 'answered-b';
             answeredTag = `<span class="q-answered-tag ${teamClass}">${escapeHtml(info.initials)}</span>`;
           } else if (streakGroup) {
-            const sk = state.streakScoring[streakGroup.start];
-            if (sk && sk.totalPoints > 0) {
-              const allP = [...state.teamA.players, ...state.teamB.players];
-              const pName = allP[sk.globalPlayerIdx]?.name || '?';
-              const teamClass = sk.team === 'a' ? 'team-a-tag' : 'team-b-tag';
-              answeredTeamClass = sk.team === 'a' ? 'answered-a' : 'answered-b';
-              answeredTag = `<span class="q-answered-tag ${teamClass}">${escapeHtml(getInitials(pName))}</span>`;
+            // Streak slots can have an entry per team — show one initials tag for each.
+            const tags = [];
+            for (const t of ['a', 'b']) {
+              const h = state.history.find(h => h.question === i && h.isStreak && h.team === t);
+              if (!h) continue;
+              const tObj = t === 'a' ? state.teamA : state.teamB;
+              const pName = tObj.players[h.playerIndex]?.name || '?';
+              const teamClass = t === 'a' ? 'team-a-tag' : 'team-b-tag';
+              if (!answeredTeamClass) answeredTeamClass = t === 'a' ? 'answered-a' : 'answered-b';
+              tags.push(`<span class="q-answered-tag ${teamClass}">${escapeHtml(getInitials(pName))}</span>`);
             }
+            answeredTag = tags.join('');
           }
         }
         const answeredClass = isAnswered ? 'answered' : '';
@@ -1572,39 +1660,40 @@
     const teamObj = team === 'a' ? state.teamA : state.teamB;
     const q = state.questions[state.currentQuestion];
 
-    // On streak questions, force +5 and don't auto-advance
+    // On streak questions, force +5 and don't auto-advance.
+    // Streaks are the only question type where both teams can score in the same group,
+    // so streak scoring is bucketed per team: { a?: {playerIndex, totalPoints}, b?: ... }
     if (q && q.isStreak) {
       const streakKey = q.streakGroupStart;
-      const globalPlayerIdx = team === 'a' ? playerIndex : state.teamA.players.length + playerIndex;
+      if (!state.streakScoring[streakKey]) state.streakScoring[streakKey] = {};
+      const bucket = state.streakScoring[streakKey];
 
-      // If a different player tries to score on this streak, reset the previous player's streak points first
-      if (state.streakScoring[streakKey] && state.streakScoring[streakKey].globalPlayerIdx !== globalPlayerIdx) {
-        const prev = state.streakScoring[streakKey];
-        const prevTeamObj = prev.team === 'a' ? state.teamA : state.teamB;
-        prevTeamObj.players[prev.playerIndex].points -= prev.totalPoints;
-        prevTeamObj.score -= prev.totalPoints;
-        state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey));
-        state.streakScoring[streakKey] = null;
+      // Within a single team only one player tracks the streak; if a different
+      // player on the same team clicks (misclick correction), wipe that team's
+      // running total and start fresh. The other team's bucket is untouched.
+      const existing = bucket[team];
+      if (existing && existing.playerIndex !== playerIndex) {
+        teamObj.players[existing.playerIndex].points -= existing.totalPoints;
+        teamObj.score -= existing.totalPoints;
+        state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey && h.team === team));
+        bucket[team] = null;
       }
 
-      if (!state.streakScoring[streakKey]) {
-        state.streakScoring[streakKey] = { team, playerIndex, globalPlayerIdx, totalPoints: 0 };
-      }
-      const streakInfo = state.streakScoring[streakKey];
+      if (!bucket[team]) bucket[team] = { playerIndex, totalPoints: 0 };
       const addPts = 5;
-
       teamObj.players[playerIndex].points += addPts;
       teamObj.score += addPts;
-      streakInfo.totalPoints += addPts;
+      bucket[team].totalPoints += addPts;
       state.history.push({ team, playerIndex, points: addPts, question: state.currentQuestion, isStreak: true, streakKey });
       state.answeredQuestions.add(state.currentQuestion);
       renderGame();
       return;
     }
 
-    // If question already answered by someone else, remove their points first
+    // If question already answered by someone else, remove their points first.
+    // Custom dev-tool awards are not considered "the prior answer" — they stack alongside.
     if (state.answeredQuestions.has(state.currentQuestion)) {
-      const prevEntry = [...state.history].reverse().find(h => h.question === state.currentQuestion && !h.isStreak);
+      const prevEntry = [...state.history].reverse().find(h => h.question === state.currentQuestion && !h.isStreak && !h.isCustom);
       if (prevEntry) {
         const prevTeamObj = prevEntry.team === 'a' ? state.teamA : state.teamB;
         prevTeamObj.players[prevEntry.playerIndex].points -= prevEntry.points;
@@ -1626,7 +1715,7 @@
   function clearPlayerPoints(team, playerIndex) {
     const teamObj = team === 'a' ? state.teamA : state.teamB;
     const entryIdx = state.history.findIndex(h =>
-      h.question === state.currentQuestion && h.team === team && h.playerIndex === playerIndex && !h.isStreak
+      h.question === state.currentQuestion && h.team === team && h.playerIndex === playerIndex && !h.isStreak && !h.isCustom
     );
     if (entryIdx === -1) return;
     const entry = state.history[entryIdx];
@@ -1643,30 +1732,33 @@
   function clearCurrentQuestion() {
     const q = state.questions[state.currentQuestion];
     if (q && q.isStreak) return;
-    const entryIdx = state.history.findIndex(h => h.question === state.currentQuestion && !h.isStreak);
+    // Only clears the normal-scoring entry. Custom dev-tool awards are not
+    // touched here — undo them with Undo Last or another custom award with
+    // the inverse points.
+    const entryIdx = state.history.findIndex(h => h.question === state.currentQuestion && !h.isStreak && !h.isCustom);
     if (entryIdx === -1) return;
     const entry = state.history[entryIdx];
     const teamObj = entry.team === 'a' ? state.teamA : state.teamB;
     teamObj.players[entry.playerIndex].points -= entry.points;
     teamObj.score -= entry.points;
     state.history.splice(entryIdx, 1);
-    state.answeredQuestions.delete(state.currentQuestion);
+    const stillAnswered = state.history.some(h => h.question === state.currentQuestion);
+    if (!stillAnswered) state.answeredQuestions.delete(state.currentQuestion);
     renderGame();
   }
 
-  function resetStreak(streakKey) {
-    const streakInfo = state.streakScoring[streakKey];
-    if (!streakInfo || streakInfo.totalPoints === 0) return;
+  function resetStreak(streakKey, team) {
+    const bucket = state.streakScoring[streakKey];
+    const entry = bucket && bucket[team];
+    if (!entry || entry.totalPoints === 0) return;
 
-    // Undo all points for this streak
-    const teamObj = streakInfo.team === 'a' ? state.teamA : state.teamB;
-    teamObj.players[streakInfo.playerIndex].points -= streakInfo.totalPoints;
-    teamObj.score -= streakInfo.totalPoints;
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    teamObj.players[entry.playerIndex].points -= entry.totalPoints;
+    teamObj.score -= entry.totalPoints;
 
-    // Remove all streak history entries for this group
-    state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey));
+    state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey && h.team === team));
+    entry.totalPoints = 0;
 
-    streakInfo.totalPoints = 0;
     const group = state.streakGroups[streakKey];
     if (group) {
       for (const m of group.members) {
@@ -1678,6 +1770,66 @@
     renderGame();
   }
 
+  // ==================== DEV TOOLS ====================
+  async function reparseCurrentPdf() {
+    if (!state.pdfBytes) {
+      alert('No PDF is loaded for this session. Upload one from the Setup screen first.');
+      return;
+    }
+    const ok = confirm(
+      'Re-parse the current PDF?\n\n' +
+      'This re-runs the parser on the loaded PDF and replaces all parsed questions and answers. ' +
+      'Team scores, player points, and per-question history are kept intact.\n\n' +
+      'Use this to pick up parser fixes without re-uploading the file or losing your in-progress game.'
+    );
+    if (!ok) return;
+    // parsePdf detaches the buffer it's given; pass a fresh copy so state.pdfBytes survives.
+    await parsePdf(state.pdfBytes.buffer.slice(0), state.packName || 'pdf');
+    padQuestionsToSlots();
+    rebuildStreakGroups();
+    if (state.currentQuestion >= state.questions.length) state.currentQuestion = state.questions.length - 1;
+    document.getElementById('dev-tools').open = false;
+    renderGame();
+  }
+
+  function applyCustomAward() {
+    const sel = document.getElementById('dt-player').value;
+    const qNum = parseInt(document.getElementById('dt-question').value, 10);
+    const points = parseInt(document.getElementById('dt-points').value, 10);
+    if (!sel) { alert('Pick a player.'); return; }
+    if (!Number.isInteger(qNum) || qNum < 1 || qNum > state.questions.length) {
+      alert(`Question number must be between 1 and ${state.questions.length}.`); return;
+    }
+    if (!Number.isInteger(points) || points === 0) {
+      alert('Points must be a non-zero integer (negatives subtract).'); return;
+    }
+    const [team, idxStr] = sel.split(':');
+    const playerIndex = parseInt(idxStr, 10);
+    const teamObj = team === 'a' ? state.teamA : state.teamB;
+    if (!teamObj.players[playerIndex]) { alert('Player not found.'); return; }
+    const questionIdx = qNum - 1;
+    teamObj.players[playerIndex].points += points;
+    teamObj.score += points;
+    state.history.push({ team, playerIndex, points, question: questionIdx, isCustom: true });
+    state.answeredQuestions.add(questionIdx);
+    document.getElementById('dt-points').value = '';
+    document.getElementById('dev-tools').open = false;
+    renderGame();
+  }
+
+  function populateDevTools() {
+    const playerSel = document.getElementById('dt-player');
+    if (!playerSel) return;
+    const prev = playerSel.value;
+    const opts = ['<option value="">— pick player —</option>'];
+    state.teamA.players.forEach((p, i) => opts.push(`<option value="a:${i}">${escapeHtml(state.teamA.name)} — ${escapeHtml(p.name)}</option>`));
+    state.teamB.players.forEach((p, i) => opts.push(`<option value="b:${i}">${escapeHtml(state.teamB.name)} — ${escapeHtml(p.name)}</option>`));
+    playerSel.innerHTML = opts.join('');
+    if (prev && [...playerSel.options].some(o => o.value === prev)) playerSel.value = prev;
+    const qInput = document.getElementById('dt-question');
+    if (qInput) qInput.value = (state.currentQuestion || 0) + 1;
+  }
+
   function undoLast() {
     if (state.history.length === 0) return;
     const last = state.history.pop();
@@ -1687,8 +1839,9 @@
     const stillAnswered = state.history.some(h => h.question === last.question);
     if (!stillAnswered) state.answeredQuestions.delete(last.question);
     // Update streak scoring state if this was a streak action
-    if (last.isStreak && state.streakScoring[last.streakKey]) {
-      state.streakScoring[last.streakKey].totalPoints -= last.points;
+    if (last.isStreak) {
+      const bucket = state.streakScoring[last.streakKey];
+      if (bucket && bucket[last.team]) bucket[last.team].totalPoints -= last.points;
     }
     state.currentQuestion = last.question;
     renderGame();
@@ -1844,7 +1997,16 @@
       state.hasQuestions = !!snap.hasQuestions;
       state.history = snap.history || [];
       state.answeredQuestions = new Set(snap.answeredQuestions || []);
-      state.streakScoring = snap.streakScoring || {};
+      // Migrate v1 streakScoring (single scorer per streak: { team, playerIndex, globalPlayerIdx, totalPoints })
+      // to v2 (per-team buckets: { a?: {playerIndex, totalPoints}, b?: ... }).
+      const ss = snap.streakScoring || {};
+      for (const k of Object.keys(ss)) {
+        const v = ss[k];
+        if (v && typeof v === 'object' && 'team' in v && 'totalPoints' in v) {
+          ss[k] = { [v.team]: { playerIndex: v.playerIndex, totalPoints: v.totalPoints } };
+        }
+      }
+      state.streakScoring = ss;
       state.packName = snap.packName || null;
       rebuildStreakGroups();
 
@@ -1946,6 +2108,16 @@
   window.exportCsv = exportCsv;
   window.viewPdf = viewPdf;
   window.closePdfViewer = closePdfViewer;
+  window.reparseCurrentPdf = reparseCurrentPdf;
+  window.applyCustomAward = applyCustomAward;
+
+  // Refresh dev-tools panel contents whenever it opens.
+  const devToolsEl = document.getElementById('dev-tools');
+  if (devToolsEl) {
+    devToolsEl.addEventListener('toggle', () => {
+      if (devToolsEl.open) populateDevTools();
+    });
+  }
   window.clearAndReload = () => {
     if (!confirm('Clear all saved progress and reload?')) return;
     clearSavedState();
