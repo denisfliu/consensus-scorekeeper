@@ -2035,10 +2035,12 @@
 
   const PACK_SITE_BASE = 'https://www.consensustrivia.com';
   const IS_LOCAL_SERVER = location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  // Public proxies are ordered by observed reliability for consensustrivia.com pack PDFs:
+  // codetabs has been the fastest/most consistent in practice, so it leads.
   const CORS_PROXIES = [
     ...(IS_LOCAL_SERVER ? [(url) => `${location.origin}/proxy/${encodeURIComponent(url)}`] : []),
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
   ];
