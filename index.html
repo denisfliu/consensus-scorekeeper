@@ -216,10 +216,9 @@
     flex-shrink: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    border-left: 2px solid #111;
     background: #fafafa;
     scrollbar-width: thin;
-    order: 2;
+    order: 3; /* main-content (1) | splitter (2) | sidebar (3) */
   }
   .question-sidebar::-webkit-scrollbar { width: 6px; }
   .question-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
@@ -340,7 +339,6 @@
     align-items: center;
     gap: 40px;
     padding: 16px;
-    border-bottom: 2px solid #111;
     flex-shrink: 0;
     position: relative;
   }
@@ -412,8 +410,8 @@
     gap: 16px;
     align-items: flex-start;
     padding: 12px 24px;
-    border-bottom: 1px solid #ddd;
     flex-shrink: 0;
+    overflow: hidden; /* clip if user drags shorter than the inline PDF's height */
   }
   .question-content {
     flex: 1 1 50%;
@@ -457,7 +455,6 @@
     grid-template-columns: 1fr 1fr;
     flex: 1;
     min-height: 0;
-    border-top: 2px solid #111;
   }
 
   .team-panel {
@@ -543,6 +540,50 @@
     font-weight: 700;
     font-size: 0.8rem;
   }
+  /* Drag-resize splitter handles. Each renders a thin visible line via ::before
+     with a slightly wider transparent hit area so the line itself is the drag
+     target. JS in the bottom of the script wires mouse events. */
+  .splitter {
+    flex-shrink: 0;
+    user-select: none;
+    position: relative;
+    z-index: 5;
+  }
+  .splitter-v {
+    width: 6px;
+    cursor: col-resize;
+    order: 2; /* between main-content (1) and sidebar (3) */
+  }
+  .splitter-v::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: 50%;
+    width: 2px;
+    background: #111;
+    transform: translateX(-50%);
+  }
+  .splitter-v:hover::before, .splitter-v.dragging::before {
+    background: #2563eb;
+    width: 3px;
+  }
+  .splitter-h {
+    height: 6px;
+    cursor: row-resize;
+  }
+  .splitter-h::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    height: 2px;
+    background: #111;
+    transform: translateY(-50%);
+  }
+  .splitter-h.thin::before { background: #ddd; height: 1px; }
+  .splitter-h:hover::before, .splitter-h.dragging::before {
+    background: #2563eb;
+    height: 3px;
+  }
+
   .undo-btn {
     background: #e0e0e0;
     color: #111;
@@ -723,6 +764,10 @@
     <!-- Vertical question sidebar -->
     <div class="question-sidebar" id="q-sidebar"></div>
 
+    <!-- Drag-resize line between sidebar and main content. Order:2 places it
+         visually between main-content (order:1) and sidebar (order:3). -->
+    <div class="splitter splitter-v" id="splitter-sidebar"></div>
+
     <!-- Main content -->
     <div class="main-content">
       <!-- Scoreboard -->
@@ -750,6 +795,9 @@
           </div>
         </details>
       </div>
+
+      <!-- Drag-resize line below the scoreboard. -->
+      <div class="splitter splitter-h" id="splitter-scoreboard"></div>
 
       <!-- Question content + inline PDF as side-by-side columns. The inline-pdf
            is hidden by default (display:none); when shown, the two columns split
@@ -782,6 +830,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Drag-resize line between question-content-row and player panels. -->
+      <div class="splitter splitter-h" id="splitter-row"></div>
 
       <!-- Player panels -->
       <div class="bottom-panels">
@@ -2341,6 +2392,68 @@
       if (customAwardEl.open) populateCustomAward();
     });
   }
+
+  // ==================== DRAG-RESIZE SPLITTERS ====================
+  // Each splitter element is a thin strip (transparent hit area + a 2px line
+  // rendered via ::before) that the user can drag to resize an adjacent panel.
+  function attachSplitter(splitter, target, axis, opts) {
+    if (!splitter || !target) return;
+    const sign = (opts && opts.sign) || 1;
+    const min = (opts && opts.min) || 50;
+    const getMax = () => (opts && typeof opts.max === 'function') ? opts.max() : ((opts && opts.max) || Infinity);
+    let dragging = null;
+    function onMove(e) {
+      if (!dragging) return;
+      e.preventDefault();
+      const coord = axis === 'x' ? e.clientX : e.clientY;
+      const delta = (coord - dragging.startCoord) * sign;
+      const newSize = Math.max(min, Math.min(getMax(), dragging.startSize + delta));
+      target.style[axis === 'x' ? 'width' : 'height'] = newSize + 'px';
+    }
+    function onUp() {
+      dragging = null;
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    splitter.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const rect = target.getBoundingClientRect();
+      dragging = {
+        startSize: axis === 'x' ? rect.width : rect.height,
+        startCoord: axis === 'x' ? e.clientX : e.clientY,
+      };
+      splitter.classList.add('dragging');
+      document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+  // Sidebar (right column): drag left = wider, drag right = narrower → sign -1.
+  attachSplitter(
+    document.getElementById('splitter-sidebar'),
+    document.querySelector('.question-sidebar'),
+    'x',
+    { min: 120, max: 400, sign: -1 },
+  );
+  // Scoreboard: drag down = taller. Custom-award dropdown still works because
+  // .scoreboard has no overflow:hidden — its absolute-positioned panel escapes.
+  attachSplitter(
+    document.getElementById('splitter-scoreboard'),
+    document.querySelector('.scoreboard'),
+    'y',
+    { min: 60, max: 240 },
+  );
+  // Question/PDF row: drag down = row taller, panels shrink (panels are flex:1).
+  attachSplitter(
+    document.getElementById('splitter-row'),
+    document.querySelector('.question-content-row'),
+    'y',
+    { min: 160, max: () => Math.max(200, window.innerHeight * 0.8) },
+  );
   window.clearAndReload = () => {
     if (!confirm('Clear all saved progress and reload?')) return;
     clearSavedState();
