@@ -25,9 +25,9 @@ const STEPS = [
     body: `Live team scores at the top of every screen. <strong>Pop Out</strong> opens a presentation-style scoreboard in a separate window — useful for projectors or a second monitor — and updates live as you award points.`,
   },
   {
-    title: 'Read the category and instructions out loud',
+    title: 'Announce each new category',
     target: '.question-content',
-    body: `At the start of <em>each</em> question, read the category name aloud (e.g. "Set of 4: Famous Authors"). If category instructions appear below the title, read those too — they tell players the answer format. Then read the question itself. Don't read the bold/underlined answer until a team has buzzed.`,
+    body: `At the start of every <em>new</em> category, read the category name aloud (e.g. "Set of 4: Famous Authors"). If category instructions appear below the title, read those too — they tell players the answer format. After that, just read each question as you reach it; no need to repeat the category for every one. Don't read the bold/underlined answer until a team has buzzed.`,
   },
   {
     title: 'Question sidebar',
@@ -37,24 +37,24 @@ const STEPS = [
   {
     title: 'Awarding points',
     target: '#panel-a',
-    body: `Click <strong>+10</strong> on a player to award the question — the cursor auto-advances. Number keys are shortcuts: <kbd>1</kbd>–<kbd>4</kbd> for team A, <kbd>5</kbd>–<kbd>8</kbd> for team B. If you click another team's player on a question that's already been answered, the prior award is reversed and the points go to the new player instead.`,
+    body: `Click <strong>+10</strong> on a player to award the question — the cursor auto-advances. Number keys are shortcuts too, but the key-to-player assignment <em>changes dynamically based on roster size</em>: look at the small number badge next to each player's name to see their key. If you click another team's player on a question that's already been answered, the prior award is reversed and the points go to the new player instead.`,
   },
   {
     title: 'Streak rounds',
     target: '.question-content',
-    body: `<strong>+5</strong> only — streaks award fewer points each but allow many in a row. <em>Both teams</em> can score independently on the same group, so each team racks up its own running total. The "Reset to 0" button per team wipes that team's streak total if they go cold.`,
+    body: `<strong>+5</strong> only — streaks award fewer points each but allow many in a row. <em>Both teams</em> can score independently on the same group, so each team racks up its own running total. The "Reset to 0" button per team wipes that team's streak total if they say an incorrect answer.`,
     autoJumpTo: (q) => q && q.isStreak,
   },
   {
     title: 'Jailbreak rounds',
     target: '.bottom-panels',
-    body: `Each team can only buzz <em>once</em> per question — answered players are visually muted ("locked") for the rest of the round. When every player on a team has buzzed, that team's locks reset. This keeps one expert from dominating.`,
+    body: `Each player can only buzz <em>once</em> per jailbreak round — once they've answered, they're visually muted ("locked") and can't buzz again for the rest of the round. When every player on a team has buzzed, that team's locks reset.`,
     autoJumpTo: (q) => q && q.category && /jailbreak/i.test(q.category),
   },
   {
     title: 'Splits rounds',
     target: '.question-content',
-    body: `Two paired sub-categories played back-to-back. <strong>Teams typically split:</strong> half their players answer one category, half answer the other. <em>Announce both category names up front</em> so teams can choose which players cover which half. The pop-out scoreboard shows both halves with the current one highlighted.`,
+    body: `Two paired sub-categories played back-to-back. <strong>Teams are required to split:</strong> they designate players for each category — it doesn't have to be an even split. <em>Announce both category names up front</em> so teams can decide who covers what. Both names appear in the sidebar and the inline PDF; the pop-out scoreboard also shows both with the current one highlighted.`,
     autoJumpTo: (q) => q && q.category && q.category.startsWith('Splits 1:'),
   },
   {
@@ -65,7 +65,7 @@ const STEPS = [
   {
     title: 'When parsing goes wrong',
     target: '#toggle-inline-pdf-btn',
-    body: `The parser isn't perfect. The <strong>inline PDF</strong> on the right auto-follows the current question (click <em>Expand</em> for fullscreen with arrow keys). Use it to verify the source whenever a question or answer looks suspicious. If the parser <em>did</em> get something wrong and you've already awarded points, the <strong>+/− Points</strong> dropdown in the scoreboard area is your emergency override — assign or subtract arbitrary points on any question.`,
+    body: `The parser isn't perfect. The <strong>inline PDF</strong> on the right auto-follows the current question (click <em>Expand</em> for fullscreen with arrow keys). Use it to verify the source whenever a question or answer looks suspicious. If the parser <em>did</em> get something wrong, the <strong>+/− Points</strong> dropdown in the scoreboard area is your emergency override — assign or subtract arbitrary points on any question.`,
   },
   {
     title: 'Auto-save',
