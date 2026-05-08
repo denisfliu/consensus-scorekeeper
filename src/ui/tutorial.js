@@ -12,6 +12,7 @@ import { state } from '../state.js';
 import { renderRoster } from './setup.js';
 import { parsePdf } from '../loader.js';
 import { startGame } from './game.js';
+import { startTutorial } from './tutorial-overlay.js';
 
 const TUTORIAL_PACK_URL = 'assets/tutorial-pack.pdf';
 
@@ -69,4 +70,5 @@ export async function startTutorialGame() {
   if (sel) sel.style.display = 'none';
 
   startGame();
+  startTutorial();
 }
