@@ -1177,18 +1177,25 @@
   ];
 
   function cleanTrailing(text) {
+    // Match SECTION_WORDS case-sensitively only. Page headers ("SECOND HALF",
+    // "FIRST QUARTER", etc.) are always uppercase in actual PDFs, so a
+    // case-sensitive match catches them. A case-insensitive match would
+    // otherwise truncate question text on the lowercase phrase "second half"
+    // (e.g., "blew a 12-point second half lead").
     for (const sw of SECTION_WORDS) {
       const idx = text.indexOf(sw);
       if (idx !== -1) text = text.substring(0, idx);
-      const idxLower = text.toLowerCase().indexOf(sw.toLowerCase());
-      if (idxLower !== -1) text = text.substring(0, idxLower);
     }
     text = text.replace(/\s+(?:Set of \d+.*|Splits?:.*|PACK \d+.*|Streaks?.*|Streak)$/i, '');
     return text.trim();
   }
 
-  // Known structural lines that aren't categories
-  const STRUCTURAL_RE = /^(PACK \d+|END OF|FIRST|SECOND|THIRD|FOURTH|_{3,}|20\d\d-\d\d|Post-Secondary|Head|Editor|Writers)/i;
+  // Known structural lines that aren't categories. Case-sensitive on purpose:
+  // page headers ("PACK 1", "END OF FIRST QUARTER", "FIRST HALF", ...) are
+  // always uppercase in real PDFs, so case-sensitive matching catches them
+  // without risking a false-positive on an instruction line that happens to
+  // start with the lowercase word "first" or "second".
+  const STRUCTURAL_RE = /^(PACK \d+|END OF|FIRST|SECOND|THIRD|FOURTH|_{3,}|20\d\d-\d\d|Post-Secondary|Head|Editor|Writers)/;
 
   // Extract rich text (with bold flags) for a range of the combined string
   function extractRichRange(start, end, richSegments, posMap) {
@@ -1251,8 +1258,8 @@
       if (STRUCTURAL_RE.test(text) || text.length < 2) continue;
       // Skip answer/accept/prompt/reject lines
       if (/^(A:\s|\(accept|\(prompt|\(reject)/i.test(text)) continue;
-      // Skip quarter/half markers
-      if (/^(QUARTER|HALF)/i.test(text)) continue;
+      // Skip quarter/half markers (page headers — always uppercase in real PDFs).
+      if (/^(QUARTER|HALF)/.test(text)) continue;
       // Skip bare numbers
       if (/^\d+$/.test(text.trim())) continue;
 
