@@ -137,35 +137,15 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-window.addPlayer = addPlayer;
-window.removePlayer = removePlayer;
-window.startGame = startGame;
-window.backToSetup = backToSetup;
-window.addPoints = addPoints;
-window.undoLast = undoLast;
-window.nextQuestion = nextQuestion;
-window.prevQuestion = prevQuestion;
-window.skipQuestion = skipQuestion;
-window.goToQuestion = goToQuestion;
-window.resetStreak = resetStreak;
-window.clearPlayerPoints = clearPlayerPoints;
-window.clearCurrentQuestion = clearCurrentQuestion;
-window.exportCsv = exportCsv;
-window.viewPdf = viewPdf;
-window.closePdfViewer = closePdfViewer;
-window.toggleInlinePdf = toggleInlinePdf;
-window.reparseCurrentPdf = reparseCurrentPdf;
-window.applyCustomAward = applyCustomAward;
-window.popOutScoreboard = popOutScoreboard;
-
 // ==================== DRAG-RESIZE SPLITTERS ====================
 import { setupSplitters } from './ui/splitter.js';
 setupSplitters();
-window.clearAndReload = () => {
+
+function clearAndReload() {
   if (!confirm('Clear all saved progress and reload?')) return;
   clearSavedState();
   location.reload();
-};
+}
 // ==================== PDF VIEWER ====================
 import {
   viewPdf,
@@ -183,18 +163,46 @@ import {
 } from './ui/pdf-viewer.js';
 setupPdfViewer();
 
-// Re-export to window so inline onclick="..." handlers in index.html still work
-// (Phase 4 cleanup will replace those with addEventListener and these go away).
-window.pdfPagePrev = pdfPagePrev;
-window.pdfPageNext = pdfPageNext;
-window.inlinePdfPrev = inlinePdfPrev;
-window.inlinePdfNext = inlinePdfNext;
-
 // ==================== SCOREBOARD POPOUT ====================
 import { pushScoreboardUpdate, popOutScoreboard } from './ui/scoreboard-popout.js';
 
 import { setupPackBrowser } from './ui/pack-browser.js';
 setupPackBrowser();
+
+// ==================== ACTION DISPATCH ====================
+// Single delegated click handler for everything index.html flags with
+// data-action="...". Buttons rendered dynamically (player panels, sidebar,
+// roster, streak status) are handled by their own delegated listeners
+// inside the relevant ui/* setup functions; this dispatcher covers the
+// static buttons that exist in index.html itself.
+const ACTION_HANDLERS = {
+  'add-player': (btn) => addPlayer(btn.dataset.team),
+  'start-game': () => startGame(),
+  'clear-and-reload': () => clearAndReload(),
+  'pdf-page-prev': () => pdfPagePrev(),
+  'pdf-page-next': () => pdfPageNext(),
+  'close-pdf-viewer': () => closePdfViewer(),
+  'pop-out-scoreboard': () => popOutScoreboard(),
+  'apply-custom-award': () => applyCustomAward(),
+  'prev-question': () => prevQuestion(),
+  'skip-question': () => skipQuestion(),
+  'next-question': () => nextQuestion(),
+  'inline-pdf-prev': () => inlinePdfPrev(),
+  'inline-pdf-next': () => inlinePdfNext(),
+  'view-pdf': () => viewPdf(),
+  'undo-last': () => undoLast(),
+  'toggle-inline-pdf': () => toggleInlinePdf(),
+  'export-csv': () => exportCsv(),
+  'reparse-current-pdf': () => reparseCurrentPdf(),
+  'back-to-setup': () => backToSetup(),
+};
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const handler = ACTION_HANDLERS[btn.dataset.action];
+  if (handler) handler(btn);
+});
 
 // Restore previous session if any. Runs at the end so all functions and DOM
 // elements are available.

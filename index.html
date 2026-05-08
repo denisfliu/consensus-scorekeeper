@@ -758,7 +758,7 @@
         <input type="text" id="team-a-name" value="Team A" placeholder="Team name">
         <div class="add-player-row">
           <input type="text" id="add-player-a" placeholder="Player name">
-          <button class="btn btn-add" onclick="addPlayer('a')">Add</button>
+          <button class="btn btn-add" data-action="add-player" data-team="a">Add</button>
         </div>
         <ul class="roster-list" id="roster-a"></ul>
       </div>
@@ -767,27 +767,27 @@
         <input type="text" id="team-b-name" value="Team B" placeholder="Team name">
         <div class="add-player-row">
           <input type="text" id="add-player-b" placeholder="Player name">
-          <button class="btn btn-add" onclick="addPlayer('b')">Add</button>
+          <button class="btn btn-add" data-action="add-player" data-team="b">Add</button>
         </div>
         <ul class="roster-list" id="roster-b"></ul>
       </div>
     </div>
   </div>
 
-  <button class="btn btn-start" id="start-btn" onclick="startGame()">Start Game</button>
+  <button class="btn btn-start" id="start-btn" data-action="start-game">Start Game</button>
   <div style="text-align:center; margin-top: 12px;">
-    <button type="button" class="browse-toggle" onclick="clearAndReload()">Clear saved game</button>
+    <button type="button" class="browse-toggle" data-action="clear-and-reload">Clear saved game</button>
   </div>
 </div>
 
 <!-- ==================== PDF VIEWER OVERLAY ==================== -->
 <div class="pdf-overlay" id="pdf-overlay">
   <div class="pdf-overlay-bar">
-    <button onclick="pdfPagePrev()" id="pdf-page-prev">&larr; Page</button>
+    <button data-action="pdf-page-prev" id="pdf-page-prev">&larr; Page</button>
     <span id="pdf-page-label">Page 1 / 1</span>
-    <button onclick="pdfPageNext()" id="pdf-page-next">Page &rarr;</button>
+    <button data-action="pdf-page-next" id="pdf-page-next">Page &rarr;</button>
     <span style="flex:1"></span>
-    <button onclick="closePdfViewer()">Close (Esc)</button>
+    <button data-action="close-pdf-viewer">Close (Esc)</button>
   </div>
   <canvas id="pdf-canvas"></canvas>
 </div>
@@ -816,7 +816,7 @@
           <div class="score" id="score-b">0</div>
         </div>
         <div class="scoreboard-actions">
-          <button class="btn scoreboard-action-btn" onclick="popOutScoreboard()" title="Open a presentation-style scoreboard in a new window">Pop Out &#x2197;</button>
+          <button class="btn scoreboard-action-btn" data-action="pop-out-scoreboard" title="Open a presentation-style scoreboard in a new window">Pop Out &#x2197;</button>
           <details class="custom-award" id="custom-award">
             <summary title="Award arbitrary points to any player on any question">+/- Points &#9662;</summary>
             <div class="custom-award-panel">
@@ -825,7 +825,7 @@
                 <select id="dt-player" style="flex:1;min-width:160px"></select>
                 <label>Q# <input id="dt-question" type="number" min="1" style="width:64px"></label>
                 <label>Pts <input id="dt-points" type="number" style="width:72px"></label>
-                <button class="btn" onclick="applyCustomAward()">Apply</button>
+                <button class="btn" data-action="apply-custom-award">Apply</button>
               </div>
               <div class="custom-award-hint">No restrictions. Negative values subtract. Use Undo Last to reverse.</div>
             </div>
@@ -848,19 +848,19 @@
           <div id="q-answered-by" style="display:none;margin:4px 0;font-size:0.9rem;color:#555;"></div>
           <div id="streak-status" style="display:none;margin:6px 0;padding:6px 10px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:0.95rem;"></div>
           <div class="question-nav">
-            <button class="btn" onclick="prevQuestion()">&larr; Prev</button>
-            <button class="btn" onclick="skipQuestion()">Skip (0)</button>
-            <button class="btn" onclick="nextQuestion()">Next &rarr;</button>
+            <button class="btn" data-action="prev-question">&larr; Prev</button>
+            <button class="btn" data-action="skip-question">Skip (0)</button>
+            <button class="btn" data-action="next-question">Next &rarr;</button>
           </div>
         </div>
 
         <div class="inline-pdf" id="inline-pdf" style="display:none">
           <div class="inline-pdf-bar">
-            <button onclick="inlinePdfPrev()" id="inline-pdf-prev">&larr; Page</button>
+            <button data-action="inline-pdf-prev" id="inline-pdf-prev">&larr; Page</button>
             <span id="inline-pdf-label">Page 1 / 1</span>
-            <button onclick="inlinePdfNext()" id="inline-pdf-next">Page &rarr;</button>
+            <button data-action="inline-pdf-next" id="inline-pdf-next">Page &rarr;</button>
             <span style="flex:1"></span>
-            <button onclick="viewPdf()" title="Open fullscreen view">Expand &#x2197;</button>
+            <button data-action="view-pdf" title="Open fullscreen view">Expand &#x2197;</button>
           </div>
           <div class="inline-pdf-canvas-wrap">
             <canvas id="inline-pdf-canvas"></canvas>
@@ -884,16 +884,16 @@
         <span><kbd>0</kbd> / <kbd>&rarr;</kbd> Next</span>
         <span><kbd>&larr;</kbd> Prev</span>
         <span><kbd>Ctrl+Z</kbd> Undo</span>
-        <button class="btn undo-btn" id="undo-btn" onclick="undoLast()" disabled>Undo Last</button>
-        <button class="btn" id="toggle-inline-pdf-btn" onclick="toggleInlinePdf()">Hide PDF</button>
-        <button class="btn" onclick="exportCsv()">Export CSV</button>
+        <button class="btn undo-btn" id="undo-btn" data-action="undo-last" disabled>Undo Last</button>
+        <button class="btn" id="toggle-inline-pdf-btn" data-action="toggle-inline-pdf">Hide PDF</button>
+        <button class="btn" data-action="export-csv">Export CSV</button>
         <details class="dev-tools" id="dev-tools">
           <summary>Dev Tools &#9662;</summary>
           <div class="dev-tools-panel">
-            <button class="btn" onclick="reparseCurrentPdf()">Re-parse current PDF</button>
+            <button class="btn" data-action="reparse-current-pdf">Re-parse current PDF</button>
           </div>
         </details>
-        <button class="btn back-btn" onclick="backToSetup()">Back to Setup</button>
+        <button class="btn back-btn" data-action="back-to-setup">Back to Setup</button>
       </div>
     </div><!-- /main-content -->
   </div>
