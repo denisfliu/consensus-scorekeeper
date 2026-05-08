@@ -1,5 +1,9 @@
 // ==================== STATE ====================
 import { state } from './state.js';
+import { rebuildJailbreakLocks } from './game/jailbreak.js';
+import { rebuildStreakGroups } from './game/streaks.js';
+import { getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize } from './game/categories.js';
+import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, loadPdfBytes, clearSavedState } from './game/persistence.js';
 
 // ==================== SETUP ====================
 function addPlayer(team) {
@@ -83,6 +87,7 @@ async function processZipBuffer(buffer) {
 }
 
 import { readZip, looksLikePdfOrZip } from './parser/zip.js';
+import { extractRichLinesFromPdf } from './parser/pdf-text.js';
 
 async function parsePdf(arrayBuffer, filename) {
   const statusEl = document.getElementById('pdf-status');
@@ -98,152 +103,8 @@ async function parsePdf(arrayBuffer, filename) {
     state.pdfBytes = new Uint8Array(arrayBuffer.slice(0));
     const pdf = await window.pdfjsLib.getDocument({ data: dataCopy }).promise;
 
-    // Step 1: Extract all text items with font info
-    // Each item becomes { str, font }
-    const allItems = [];
-    const fontUsage = {}; // font -> count of chars
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      if (content.items.length === 0) continue;
-
-      // pdf.js returns items in content-stream order, which is NOT always
-      // left-to-right spatial order. For PDFs that overlay bold text on
-      // top of the body, the answer text can appear before its "A:" prefix
-      // in stream order. Group items by Y (within tolerance), then sort
-      // each group by X so the combined text reads in spatial order.
-      const itemsWithPos = content.items
-        .filter(it => it.str !== undefined)
-        .map(it => ({
-          str: it.str,
-          font: it.fontName,
-          y: Math.round(it.transform[5]),
-          x: it.transform[4],
-        }));
-
-      const groups = []; // { y, items: [] }
-      for (const it of itemsWithPos) {
-        const g = groups.find(g => Math.abs(g.y - it.y) <= 3);
-        if (g) g.items.push(it);
-        else groups.push({ y: it.y, items: [it] });
-      }
-      groups.sort((a, b) => b.y - a.y); // top of page first
-
-      for (const g of groups) {
-        g.items.sort((a, b) => a.x - b.x);
-        for (const it of g.items) {
-          allItems.push({ str: it.str, font: it.font, page: i, y: it.y });
-          if (it.str) {
-            fontUsage[it.font] = (fontUsage[it.font] || 0) + it.str.replace(/\s/g, '').length;
-          }
-        }
-        allItems.push({ str: '\n', font: null, page: i, y: g.y });
-      }
-    }
-
-    // Step 2: Detect which font is "bold"
-    // The bold font is used for category headers and answer highlights.
-    // Heuristic: the font with the 2nd highest usage (most used = normal body text)
-    const boldFonts = new Set();
-    const sorted = Object.entries(fontUsage).sort((a, b) => b[1] - a[1]);
-    if (sorted.length >= 2) boldFonts.add(sorted[1][0]);
-
-    // Step 3: Build rich segments array: [{str, bold, page}]
-    const richItems = allItems.map(item => ({
-      str: item.str,
-      bold: item.font ? boldFonts.has(item.font) : false,
-      page: item.page || 1,
-      y: item.y,
-    }));
-
-    // Build lines with bold info: { text, isBold }
-    // A line is "bold" if all non-whitespace content is in the bold font
-    const lines = []; // { text: string, isBold: boolean }
-    let curLineText = '';
-    let curLineBoldChars = 0;
-    let curLineNonBoldChars = 0;
-    for (const item of richItems) {
-      if (item.str === '\n') {
-        const trimmed = curLineText.trim();
-        if (trimmed) {
-          lines.push({
-            text: trimmed,
-            isBold: curLineBoldChars > 0 && curLineNonBoldChars === 0,
-          });
-        }
-        curLineText = '';
-        curLineBoldChars = 0;
-        curLineNonBoldChars = 0;
-      } else {
-        if (curLineText && !curLineText.endsWith(' ') && !item.str.startsWith(' ')) curLineText += ' ';
-        curLineText += item.str;
-        const nonWs = item.str.replace(/\s/g, '').length;
-        if (item.bold) curLineBoldChars += nonWs;
-        else curLineNonBoldChars += nonWs;
-      }
-    }
-    if (curLineText.trim()) {
-      lines.push({
-        text: curLineText.trim(),
-        isBold: curLineBoldChars > 0 && curLineNonBoldChars === 0,
-      });
-    }
-
-    // Build flat rich segments (merging adjacent same-bold items, adding spaces between items on same line).
-    // Each segment also carries the y-coordinate of its first item, which we use later to scroll the
-    // inline PDF viewer to the actual question position (instead of always to page top).
-    // We also record `lineStartPositions` (positions in `combined` where each logical PDF line begins)
-    // alongside, used by parseQuestions to reject mid-sentence "N." matches like the "3." inside
-    // "secant of 5 pi over 3." in a Jackpot question. This is purely additive: segment structure is unchanged.
-    const richSegments = [];
-    const lineStartPositions = [0]; // first line starts at combined position 0
-    let combinedLen = 0;
-    let onNewLine = true;
-    for (const item of richItems) {
-      if (item.str === '\n') {
-        if (richSegments.length > 0) {
-          richSegments.push({ str: ' ', bold: false, page: item.page, y: item.y });
-          combinedLen += 1;
-        }
-        onNewLine = true;
-        // Record where the next line begins. May land on identical positions
-        // (e.g., consecutive blank '\n's); the Set in parseQuestions dedupes.
-        lineStartPositions.push(combinedLen);
-        continue;
-      }
-      if (!onNewLine && richSegments.length > 0) {
-        const last = richSegments[richSegments.length - 1];
-        if (!last.str.endsWith(' ') && !item.str.startsWith(' ')) {
-          if (last.bold === item.bold) {
-            last.str += ' ';
-            combinedLen += 1;
-          } else {
-            richSegments.push({ str: ' ', bold: false, page: item.page, y: item.y });
-            combinedLen += 1;
-          }
-        }
-      }
-      onNewLine = false;
-      if (richSegments.length > 0 && richSegments[richSegments.length - 1].bold === item.bold) {
-        richSegments[richSegments.length - 1].str += item.str;
-      } else {
-        richSegments.push({ str: item.str, bold: item.bold, page: item.page, y: item.y });
-      }
-      combinedLen += item.str.length;
-    }
-
-    // Build plain combined text and a position-to-segment map
-    let combined = '';
-    const posMap = []; // for each char in combined, { segIdx, charIdx }
-    for (let si = 0; si < richSegments.length; si++) {
-      const seg = richSegments[si];
-      for (let ci = 0; ci < seg.str.length; ci++) {
-        posMap.push({ segIdx: si, charIdx: ci });
-        combined += seg.str[ci];
-      }
-    }
-
+    const { lines, combined, richSegments, posMap, lineStartPositions } =
+      await extractRichLinesFromPdf(pdf);
     const questions = parseQuestions(lines, combined, richSegments, posMap, lineStartPositions);
     // pageNum and yPos are now set inside parseQuestions (using exact question
     // positions, not indexOf which collides with substrings like "1. " inside "11. ").
@@ -337,24 +198,6 @@ function startGame() {
   renderGame();
 }
 
-// Reconstruct jailbreak per-team lockouts from state.history. Walking
-// history in order means that any change (undo, clear, custom award) is
-// reflected automatically — we never have to keep two sources of truth in
-// sync. A team's lock resets the moment every player on it has buzzed.
-function rebuildJailbreakLocks() {
-  state.jailbreakLocked = { a: [], b: [] };
-  for (const h of state.history) {
-    if (h.isStreak) continue;
-    const q = state.questions[h.question];
-    if (!q || !q.category || !/jailbreak/i.test(q.category)) continue;
-    const lock = state.jailbreakLocked[h.team];
-    if (!lock.includes(h.playerIndex)) lock.push(h.playerIndex);
-    const teamPlayers = h.team === 'a' ? state.teamA.players : state.teamB.players;
-    if (teamPlayers.length > 0 && lock.length >= teamPlayers.length) {
-      state.jailbreakLocked[h.team] = [];
-    }
-  }
-}
 
 function backToSetup() {
   document.getElementById('setup').style.display = 'block';
@@ -375,18 +218,7 @@ function renderGame() {
   if (typeof pushScoreboardUpdate === 'function') pushScoreboardUpdate();
 }
 
-function getInitials(name) {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.substring(0, 2).toUpperCase();
-}
 
-function getAnsweredBy(questionIdx) {
-  const entry = [...state.history].reverse().find(h => h.question === questionIdx && !h.isStreak);
-  if (!entry) return null;
-  const teamObj = entry.team === 'a' ? state.teamA : state.teamB;
-  return { name: teamObj.players[entry.playerIndex].name, team: teamObj.name, teamLetter: entry.team, points: entry.points, initials: getInitials(teamObj.players[entry.playerIndex].name) };
-}
 
 function renderQuestion() {
   const q = state.questions[state.currentQuestion];
@@ -859,12 +691,6 @@ function undoLast() {
 // ==================== KEYBINDS ====================
 // Robust visibility check: relies on the inline style toggled by startGame/backToSetup,
 // and on the computed style as a fallback if a CSS class ever swaps it instead.
-function isGameVisible() {
-  const el = document.getElementById('game');
-  if (!el) return false;
-  if (el.style.display && el.style.display !== 'none') return true;
-  return window.getComputedStyle(el).display !== 'none';
-}
 
 // Toggle in console: window.DEBUG_KEYS = true
 // Window-level capture-phase logger: catches every keydown before any descendant
@@ -922,78 +748,9 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ==================== PERSISTENCE ====================
-// Save game/setup state and the loaded PDF to localStorage so a page refresh
-// doesn't wipe the user's progress.
-const STORAGE_KEY = 'consensus-state-v1';
-const PDF_STORAGE_KEY = 'consensus-pdf-v1';
 
-function saveState() {
-  try {
-    const snapshot = {
-      teamA: state.teamA,
-      teamB: state.teamB,
-      questions: state.questions,
-      currentQuestion: state.currentQuestion,
-      hasQuestions: state.hasQuestions,
-      history: state.history,
-      answeredQuestions: [...state.answeredQuestions],
-      streakScoring: state.streakScoring,
-      packName: state.packName,
-      gameActive: isGameVisible(),
-      inlinePdfHidden: state.inlinePdfHidden,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch (e) {
-    console.warn('[persist] saveState failed:', e);
-  }
-}
 
-function savePdfBytes(bytes) {
-  try {
-    // chunked to avoid call-stack limits on String.fromCharCode for large arrays
-    let bin = '';
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-    }
-    localStorage.setItem(PDF_STORAGE_KEY, btoa(bin));
-  } catch (e) {
-    console.warn('[persist] savePdfBytes failed (likely quota):', e);
-  }
-}
 
-function loadPdfBytes() {
-  try {
-    const b64 = localStorage.getItem(PDF_STORAGE_KEY);
-    if (!b64) return null;
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-  } catch (e) {
-    console.warn('[persist] loadPdfBytes failed:', e);
-    return null;
-  }
-}
-
-function rebuildStreakGroups() {
-  state.streakGroups = {};
-  for (const q of state.questions) {
-    if (q && q.streakRange) {
-      const startIdx = q.streakRange.start - 1;
-      const endIdx = q.streakRange.end - 1;
-      for (let si = startIdx; si <= endIdx; si++) {
-        if (state.questions[si]) {
-          state.questions[si].isStreak = true;
-          state.questions[si].streakGroupStart = startIdx;
-        }
-      }
-      const members = [];
-      for (let si = startIdx; si <= endIdx; si++) members.push(si);
-      state.streakGroups[startIdx] = { start: startIdx, end: endIdx, members, category: q.category, sourceQuestion: q };
-    }
-  }
-}
 
 function loadState() {
   try {
@@ -1047,46 +804,18 @@ function loadState() {
   }
 }
 
-function clearSavedState() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(PDF_STORAGE_KEY);
-  } catch (e) { /* ignore */ }
-}
 
 // ==================== UTILS ====================
 import { escapeHtml, csvEscape } from './util/escape.js';
+import { buildResultsCsv, buildResultsFilename } from './util/csv.js';
 
 function exportCsv() {
-  const winner = state.teamA.score === state.teamB.score
-    ? 'Tie'
-    : (state.teamA.score > state.teamB.score ? state.teamA.name : state.teamB.name);
-  const rows = [];
-  rows.push(['Packet', state.packName || '(no packet loaded)']);
-  rows.push(['Team A', state.teamA.name]);
-  rows.push(['Team B', state.teamB.name]);
-  rows.push(['Final Score', `${state.teamA.name} ${state.teamA.score} - ${state.teamB.score} ${state.teamB.name}`]);
-  rows.push(['Winner', winner]);
-  rows.push(['Exported', new Date().toISOString()]);
-  rows.push([]);
-  rows.push(['Team', 'Score']);
-  rows.push([state.teamA.name, state.teamA.score]);
-  rows.push([state.teamB.name, state.teamB.score]);
-  rows.push([]);
-  rows.push(['Player', 'Team', 'Points']);
-  for (const p of state.teamA.players) rows.push([p.name, state.teamA.name, p.points]);
-  for (const p of state.teamB.players) rows.push([p.name, state.teamB.name, p.points]);
-
-  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  const csv = buildResultsCsv(state);
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const sanitize = s => String(s || '').replace(/[^a-z0-9 _-]/gi, '_').trim();
-  const packBase = sanitize((state.packName || 'consensus-stats').replace(/\.pdf$/i, '')) || 'consensus-stats';
-  const matchup = `${sanitize(state.teamA.name) || 'TeamA'} vs ${sanitize(state.teamB.name) || 'TeamB'}`;
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${packBase} - ${matchup} - ${stamp}.csv`;
+  a.download = buildResultsFilename(state);
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1352,50 +1081,7 @@ if (scoreboardChannel) {
   };
 }
 
-// For a "Splits N: <title>" category, find the paired category. In a
-// Consensus pack, each splits round has TWO sub-categories played
-// back-to-back (e.g., "Splits 1: Gothic Literature" then "Splits 2:
-// Mountaineering"). We locate the partner by walking state.questions from
-// the current position toward the other half of the pair.
-function getSplitPair(currentIdx, currentCategory) {
-  if (!currentCategory) return null;
-  const m = currentCategory.match(/^Splits (\d+):\s*/);
-  if (!m) return null;
-  const curNum = parseInt(m[1], 10);
-  const targetPrefix = curNum === 1 ? 'Splits 2:' : 'Splits 1:';
-  // Walk forward from current for Splits-2-given-Splits-1, backward for the
-  // reverse. Stop on any non-splits category in between (defensive).
-  const dir = curNum === 1 ? 1 : -1;
-  let i = currentIdx + dir;
-  while (i >= 0 && i < state.questions.length) {
-    const c = state.questions[i] && state.questions[i].category;
-    if (c && c.startsWith(targetPrefix)) return { current: currentCategory, partner: c, currentNum: curNum };
-    // Skip same-pair half (current's own category) and missing slots.
-    if (c && !c.startsWith('Splits ') && !state.questions[i].isMissing) break;
-    i += dir;
-  }
-  return null;
-}
 
-// Counts the size of the contiguous category-instance the current question
-// belongs to. Walks forward from currentIdx, accepting questions that share
-// the same category AND have posInCategory == expected (currentPos+1, +2, ...).
-// Stops as soon as the chain breaks — which correctly distinguishes between
-// two separate categories that happen to share the same name (e.g., the pack
-// has two unrelated "Set of 4" sections; without this, both would be lumped
-// together and a 4-question category would display as 1/8).
-function getCategoryRunSize(currentIdx, category, currentPos) {
-  if (!category || !currentPos) return null;
-  let total = currentPos;
-  let expected = currentPos + 1;
-  for (let i = currentIdx + 1; i < state.questions.length; i++) {
-    const qq = state.questions[i];
-    if (!qq || qq.category !== category || qq.posInCategory !== expected) break;
-    total = expected;
-    expected++;
-  }
-  return total;
-}
 
 // Build the live state snapshot the popout renders.
 function getScoreboardSnapshot() {
