@@ -1,0 +1,130 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { state, addPoints, undoLast, clearCurrentQuestion } from '../src/legacy.js';
+import { resetState, makeQ } from './helpers.js';
+
+beforeEach(() => {
+  resetState();
+  state.teamA = {
+    name: 'Alphas',
+    players: [{ name: 'A1', points: 0 }, { name: 'A2', points: 0 }],
+    score: 0,
+  };
+  state.teamB = {
+    name: 'Bravos',
+    players: [{ name: 'B1', points: 0 }],
+    score: 0,
+  };
+  state.questions = [makeQ(1), makeQ(2), makeQ(3)];
+  state.hasQuestions = true;
+});
+
+describe('addPoints — non-streak question', () => {
+  it('adds points to player and team, marks question answered, advances cursor', () => {
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10);
+    expect(state.teamA.players[0].points).toBe(10);
+    expect(state.teamA.score).toBe(10);
+    expect(state.answeredQuestions.has(0)).toBe(true);
+    expect(state.currentQuestion).toBe(1);
+    expect(state.history).toHaveLength(1);
+    expect(state.history[0]).toMatchObject({ team: 'a', playerIndex: 0, points: 10, question: 0 });
+  });
+
+  it('does not advance past the last question', () => {
+    state.currentQuestion = 2;
+    addPoints('a', 0, 10);
+    expect(state.currentQuestion).toBe(2);
+  });
+
+  it('reassigns points if a different team buzzes after a wrong answer', () => {
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10);
+    state.currentQuestion = 0; // simulate the moderator going back
+    addPoints('b', 0, 10);
+    // Team A's points removed, Team B awarded
+    expect(state.teamA.players[0].points).toBe(0);
+    expect(state.teamA.score).toBe(0);
+    expect(state.teamB.players[0].points).toBe(10);
+    expect(state.teamB.score).toBe(10);
+  });
+});
+
+describe('addPoints — streak question', () => {
+  it('forces +5 and does NOT advance the cursor', () => {
+    state.questions = [
+      makeQ(1, { isStreak: true, streakGroupStart: 0, category: 'Streak: X' }),
+      makeQ(2),
+    ];
+    state.streakGroups = { 0: { start: 0, end: 0, members: [0], category: 'Streak: X', sourceQuestion: state.questions[0] } };
+    state.currentQuestion = 0;
+
+    addPoints('a', 0, 10); // points arg is ignored on streak — forces 5
+    expect(state.teamA.players[0].points).toBe(5);
+    expect(state.teamA.score).toBe(5);
+    expect(state.currentQuestion).toBe(0); // no advance
+    expect(state.streakScoring[0]).toBeDefined();
+    expect(state.streakScoring[0].a.totalPoints).toBe(5);
+  });
+
+  it('accumulates streak points across multiple buzzes from the same player', () => {
+    state.questions = [makeQ(1, { isStreak: true, streakGroupStart: 0, category: 'Streak: X' })];
+    state.streakGroups = { 0: { start: 0, end: 0, members: [0], category: 'Streak: X', sourceQuestion: state.questions[0] } };
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10);
+    addPoints('a', 0, 10);
+    addPoints('a', 0, 10);
+    expect(state.teamA.players[0].points).toBe(15);
+    expect(state.streakScoring[0].a.totalPoints).toBe(15);
+  });
+
+  it('allows both teams to score on the same streak (separate buckets)', () => {
+    state.questions = [makeQ(1, { isStreak: true, streakGroupStart: 0, category: 'Streak: X' })];
+    state.streakGroups = { 0: { start: 0, end: 0, members: [0], category: 'Streak: X', sourceQuestion: state.questions[0] } };
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10);
+    addPoints('b', 0, 10);
+    expect(state.teamA.score).toBe(5);
+    expect(state.teamB.score).toBe(5);
+    expect(state.streakScoring[0].a).toBeDefined();
+    expect(state.streakScoring[0].b).toBeDefined();
+  });
+
+  it('switching to a different player on the same team wipes that team\'s streak total', () => {
+    state.questions = [makeQ(1, { isStreak: true, streakGroupStart: 0, category: 'Streak: X' })];
+    state.streakGroups = { 0: { start: 0, end: 0, members: [0], category: 'Streak: X', sourceQuestion: state.questions[0] } };
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10);
+    addPoints('a', 0, 10); // 10 total on player 0
+    addPoints('a', 1, 10); // misclick correction → wipe player 0, start player 1
+    expect(state.teamA.players[0].points).toBe(0);
+    expect(state.teamA.players[1].points).toBe(5);
+    expect(state.teamA.score).toBe(5);
+    expect(state.streakScoring[0].a.playerIndex).toBe(1);
+    expect(state.streakScoring[0].a.totalPoints).toBe(5);
+  });
+});
+
+describe('undoLast', () => {
+  it('reverses the most recent score and unmarks the question if no entries remain', () => {
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10); // currentQuestion advances to 1
+    expect(state.teamA.score).toBe(10);
+    expect(state.answeredQuestions.has(0)).toBe(true);
+    undoLast();
+    expect(state.teamA.score).toBe(0);
+    expect(state.teamA.players[0].points).toBe(0);
+    expect(state.history).toHaveLength(0);
+    expect(state.answeredQuestions.has(0)).toBe(false);
+  });
+});
+
+describe('clearCurrentQuestion', () => {
+  it('removes the score awarded for the current question', () => {
+    state.currentQuestion = 0;
+    addPoints('a', 0, 10); // advances cursor; we'll go back manually
+    state.currentQuestion = 0;
+    clearCurrentQuestion();
+    expect(state.teamA.score).toBe(0);
+    expect(state.answeredQuestions.has(0)).toBe(false);
+  });
+});
