@@ -28,6 +28,13 @@ const PRESET_ROSTERS = {
 };
 
 export async function startTutorialGame() {
+  // Mark this as a sandbox session — saveState / savePdfBytes (in
+  // game/persistence.js) early-return while this is true, so nothing
+  // we do here touches localStorage. exitTutorial() in tutorial-overlay.js
+  // reloads the page, which drops the user back into their pre-tutorial
+  // saved state (if any) and resets tutorialMode to false.
+  state.tutorialMode = true;
+
   // Wipe any in-progress setup so the tutorial always starts from a known shape.
   state.teamA.name = PRESET_ROSTERS.teamA.name;
   state.teamA.players = PRESET_ROSTERS.teamA.players.map((name) => ({ name, points: 0 }));

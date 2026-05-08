@@ -13,6 +13,11 @@
 import { state } from '../state.js';
 import { goToQuestion } from './game.js';
 
+// Reloading on exit drops the user back into their pre-tutorial saved
+// state (since saveState was suppressed throughout the tutorial). Lifted
+// to a module function so tests / future callers can override it.
+let exitAction = () => location.reload();
+
 const STEPS = [
   {
     title: 'Welcome to the tutorial',
@@ -221,6 +226,9 @@ function exitTutorial() {
     window.removeEventListener('resize', resizeListener);
     resizeListener = null;
   }
+  // If this was a tutorial sandbox session, reload so any pre-tutorial
+  // saved state is restored and the in-memory preset rosters are dropped.
+  if (state.tutorialMode) exitAction();
 }
 
 // Single delegated click listener for the tooltip's nav buttons. Stops

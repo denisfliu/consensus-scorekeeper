@@ -21,6 +21,9 @@ export function isGameVisible() {
 }
 
 export function saveState() {
+  // Tutorial sandbox: suppress all persistence so the tutorial doesn't
+  // overwrite the moderator's pre-tutorial saved game. Reset on page load.
+  if (state.tutorialMode) return;
   try {
     const snapshot = {
       teamA: state.teamA,
@@ -42,6 +45,7 @@ export function saveState() {
 }
 
 export function savePdfBytes(bytes) {
+  if (state.tutorialMode) return;
   try {
     // chunked to avoid call-stack limits on String.fromCharCode for large arrays
     let bin = '';

@@ -19,6 +19,7 @@ export function resetState() {
   state.pdfViewer = { doc: null, currentPage: 1, inlinePage: null };
   state.inlinePdfHidden = false;
   state.jailbreakLocked = { a: [], b: [] };
+  state.tutorialMode = false;
 }
 
 // Build a minimal question object with sensible defaults.

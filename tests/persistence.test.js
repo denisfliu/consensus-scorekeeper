@@ -88,6 +88,28 @@ describe('loadState — v1 → v2 streakScoring migration', () => {
   });
 });
 
+describe('tutorialMode suppresses persistence', () => {
+  it('saveState is a no-op while state.tutorialMode is true', () => {
+    state.teamA.name = 'Saved-Real';
+    saveState();
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    const beforeTutorial = localStorage.getItem(STORAGE_KEY);
+
+    // Now enter tutorial; mutations during it should not overwrite storage.
+    state.tutorialMode = true;
+    state.teamA.name = 'Tutorial-Pretend';
+    saveState();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(beforeTutorial);
+  });
+
+  it('savePdfBytes is a no-op while state.tutorialMode is true', () => {
+    savePdfBytes(new Uint8Array([1, 2, 3]));
+    state.tutorialMode = true;
+    savePdfBytes(new Uint8Array([9, 9, 9]));
+    expect(Array.from(loadPdfBytes())).toEqual([1, 2, 3]);
+  });
+});
+
 describe('savePdfBytes / loadPdfBytes', () => {
   it('round-trips PDF bytes through localStorage', () => {
     const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // "%PDF-1.4"
