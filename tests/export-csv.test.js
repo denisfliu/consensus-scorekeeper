@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { state, exportCsv } from '../src/legacy.js';
+import { state, exportCsv } from '../src/main.js';
 import { resetState } from './helpers.js';
 
 beforeEach(resetState);

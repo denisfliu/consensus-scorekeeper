@@ -1,7 +1,7 @@
-// Shared helpers for tests. Resets the legacy.js state singleton to a known
-// blank shape between tests so mutation-style tests don't leak.
+// Shared helpers for tests. Resets the state singleton (src/state.js) to a
+// known blank shape between tests so mutation-style tests don't leak.
 
-import { state } from '../src/legacy.js';
+import { state } from '../src/main.js';
 
 export function resetState() {
   state.teamA = { name: 'Team A', players: [], score: 0 };

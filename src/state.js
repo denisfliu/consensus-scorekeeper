@@ -3,7 +3,7 @@
 // touch state.foo = ... directly.
 //
 // After every reducer mutates state, it calls notify() which invokes all
-// registered subscribers. legacy.js subscribes renderGame so the UI is
+// registered subscribers. main.js subscribes renderGame so the UI is
 // kept in sync; tests don't subscribe so they only assert on the resulting
 // state shape.
 

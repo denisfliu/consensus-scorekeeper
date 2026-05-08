@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseQuestions } from '../src/legacy.js';
+import { parseQuestions } from '../src/main.js';
 
 // Build a synthetic parseQuestions input from a list of {text, isBold} lines.
 // Mirrors the shape produced by parsePdf so the assertions exercise the same

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state, addPoints, undoLast, clearCurrentQuestion } from '../src/legacy.js';
+import { state, addPoints, undoLast, clearCurrentQuestion } from '../src/main.js';
 import { resetState, makeQ } from './helpers.js';
 
 beforeEach(() => {

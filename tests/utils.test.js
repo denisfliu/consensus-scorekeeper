@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, csvEscape, getInitials } from '../src/legacy.js';
+import { escapeHtml, csvEscape, getInitials } from '../src/main.js';
 
 describe('escapeHtml', () => {
   it('escapes &, <, >', () => {

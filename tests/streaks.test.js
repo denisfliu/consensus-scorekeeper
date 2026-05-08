@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state, rebuildStreakGroups } from '../src/legacy.js';
+import { state, rebuildStreakGroups } from '../src/main.js';
 import { resetState, makeQ } from './helpers.js';
 
 beforeEach(resetState);

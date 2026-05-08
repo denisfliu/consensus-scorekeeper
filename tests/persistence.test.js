@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state, saveState, loadState, clearSavedState, savePdfBytes, loadPdfBytes } from '../src/legacy.js';
+import { state, saveState, loadState, clearSavedState, savePdfBytes, loadPdfBytes } from '../src/main.js';
 import { resetState, makeQ } from './helpers.js';
 
 const STORAGE_KEY = 'consensus-state-v1';

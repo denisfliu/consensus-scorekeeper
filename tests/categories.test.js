@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state, getSplitPair, getCategoryRunSize } from '../src/legacy.js';
+import { state, getSplitPair, getCategoryRunSize } from '../src/main.js';
 import { resetState, makeQ } from './helpers.js';
 
 beforeEach(resetState);

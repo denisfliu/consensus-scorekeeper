@@ -153,8 +153,7 @@ export function toggleInlinePdf() {
 }
 
 // Handlers for the inline + fullscreen viewers' nav buttons. Wired up by
-// setupPdfViewer; also exposed so legacy.js's window.* assignments
-// (kept for the inline onclick="" handlers in index.html) can refer to them.
+// the data-action dispatcher in main.js (e.g., data-action="pdf-page-next").
 export const pdfPagePrev = () => renderPdfPage(state.pdfViewer.currentPage - 1);
 export const pdfPageNext = () => renderPdfPage(state.pdfViewer.currentPage + 1);
 export const inlinePdfPrev = () => renderInlinePdf((state.pdfViewer.inlinePage || 1) - 1);

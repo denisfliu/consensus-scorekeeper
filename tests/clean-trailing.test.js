@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanTrailing } from '../src/legacy.js';
+import { cleanTrailing } from '../src/main.js';
 
 describe('cleanTrailing', () => {
   it('strips trailing "PACK N" headers', () => {

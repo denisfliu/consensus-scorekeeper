@@ -1,7 +1,20 @@
-// ==================== STATE ====================
+// Entry point. Pulls together state + all UI modules, wires the static
+// data-action click dispatcher, and triggers loadState() at the end so
+// any restored session takes effect after every other module is ready.
+//
+// Subsequent layers:
+//   state.js                — singleton + reducers + subscribe()
+//   util/{escape,csv}.js    — pure helpers
+//   parser/{zip,pdf-text,questions}.js — pure PDF parsing
+//   game/{streaks,jailbreak,categories,persistence}.js — derived data + IO
+//   loader.js               — orchestrates parsePdf / processZipBuffer
+//   ui/*.js                 — DOM-coupled modules; each owns its own setup()
+//
+// renderGame is wired as the single state-change subscriber inside
+// setupGameScreen() — see ui/game.js. main.js does not subscribe directly.
+
 import {
   state,
-  subscribe,
   addPoints,
   clearPlayerPoints,
   clearCurrentQuestion,
@@ -13,30 +26,11 @@ import { rebuildJailbreakLocks } from './game/jailbreak.js';
 import { rebuildStreakGroups } from './game/streaks.js';
 import { getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize } from './game/categories.js';
 import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, loadPdfBytes, clearSavedState } from './game/persistence.js';
-
-// renderGame is wired as the single state-change subscriber inside
-// setupGameScreen() — see ui/game.js.
-
-// ==================== SETUP ====================
 import { addPlayer, removePlayer, renderRoster, setupSetupScreen } from './ui/setup.js';
-setupSetupScreen();
-
-// ==================== PDF PARSING ====================
 import { parsePdf, processZipBuffer, handleZipUpload } from './loader.js';
 import { readZip, looksLikePdfOrZip } from './parser/zip.js';
 import { extractRichLinesFromPdf } from './parser/pdf-text.js';
 import { SECTION_WORDS, STRUCTURAL_RE, cleanTrailing, extractRichRange, richToHtml, parseQuestions } from './parser/questions.js';
-
-document.getElementById('pdf-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.name.endsWith('.zip')) {
-    await handleZipUpload(file);
-  } else {
-    await parsePdf(await file.arrayBuffer(), file.name);
-  }
-});
-
 import {
   padQuestionsToSlots,
   startGame,
@@ -50,23 +44,77 @@ import {
   renderPlayerPanel,
   setupGameScreen,
 } from './ui/game.js';
-setupGameScreen();
-
-// ==================== DEV TOOLS ====================
 import { applyCustomAward, populateCustomAward, setupDevTools, reparseCurrentPdf as reparsePdfImpl } from './ui/dev-tools.js';
+import { setupKeybinds } from './ui/keybinds.js';
+import { escapeHtml, csvEscape } from './util/escape.js';
+import { buildResultsCsv, buildResultsFilename } from './util/csv.js';
+import { setupSplitters } from './ui/splitter.js';
+import {
+  viewPdf,
+  renderPdfPage,
+  closePdfViewer,
+  renderInlinePdf,
+  syncInlinePdfToQuestion,
+  updateInlinePdfButton,
+  toggleInlinePdf,
+  pdfPagePrev,
+  pdfPageNext,
+  inlinePdfPrev,
+  inlinePdfNext,
+  setupPdfViewer,
+} from './ui/pdf-viewer.js';
+import { pushScoreboardUpdate, popOutScoreboard } from './ui/scoreboard-popout.js';
+import { setupPackBrowser } from './ui/pack-browser.js';
+
+// ==================== UI INIT ====================
+setupSetupScreen();
+setupGameScreen();
 setupDevTools();
+setupKeybinds({ nextQuestion: () => nextQuestion(), prevQuestion: () => prevQuestion() });
+setupSplitters();
+setupPdfViewer();
+setupPackBrowser();
+
+// File picker on the setup screen — uploads either a PDF or a zip-of-PDFs.
+document.getElementById('pdf-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.name.endsWith('.zip')) {
+    await handleZipUpload(file);
+  } else {
+    await parsePdf(await file.arrayBuffer(), file.name);
+  }
+});
+
+// Reparse needs padQuestionsToSlots + renderGame, both of which live in
+// ui/game.js. Inject them so dev-tools doesn't need to import ui/game.
 const reparseCurrentPdf = () => reparsePdfImpl({ padQuestionsToSlots, renderGame });
 
+function clearAndReload() {
+  if (!confirm('Clear all saved progress and reload?')) return;
+  clearSavedState();
+  location.reload();
+}
 
-// ==================== KEYBINDS ====================
-import { setupKeybinds } from './ui/keybinds.js';
-setupKeybinds({ nextQuestion: () => nextQuestion(), prevQuestion: () => prevQuestion() });
+// Trigger a CSV download. The CSV builder is pure (util/csv.js); this thin
+// wrapper handles the Blob + anchor click that the browser needs to actually
+// download the file.
+function exportCsv() {
+  const csv = buildResultsCsv(state);
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = buildResultsFilename(state);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
-// ==================== PERSISTENCE ====================
-
-
-
-
+// loadState restores the last session from localStorage. Lives here because
+// it does both data restore (state mutation) and post-restore DOM updates
+// (renderRoster, renderGame), which would otherwise cross module boundaries.
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -96,7 +144,7 @@ function loadState() {
     const pdfBytes = loadPdfBytes();
     if (pdfBytes) state.pdfBytes = pdfBytes;
 
-    // Restore setup UI fields regardless of game state
+    // Restore setup UI fields regardless of game state.
     document.getElementById('team-a-name').value = state.teamA.name || 'Team A';
     document.getElementById('team-b-name').value = state.teamB.name || 'Team B';
     renderRoster('a');
@@ -119,59 +167,9 @@ function loadState() {
   }
 }
 
-
-// ==================== UTILS ====================
-import { escapeHtml, csvEscape } from './util/escape.js';
-import { buildResultsCsv, buildResultsFilename } from './util/csv.js';
-
-function exportCsv() {
-  const csv = buildResultsCsv(state);
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = buildResultsFilename(state);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-// ==================== DRAG-RESIZE SPLITTERS ====================
-import { setupSplitters } from './ui/splitter.js';
-setupSplitters();
-
-function clearAndReload() {
-  if (!confirm('Clear all saved progress and reload?')) return;
-  clearSavedState();
-  location.reload();
-}
-// ==================== PDF VIEWER ====================
-import {
-  viewPdf,
-  renderPdfPage,
-  closePdfViewer,
-  renderInlinePdf,
-  syncInlinePdfToQuestion,
-  updateInlinePdfButton,
-  toggleInlinePdf,
-  pdfPagePrev,
-  pdfPageNext,
-  inlinePdfPrev,
-  inlinePdfNext,
-  setupPdfViewer,
-} from './ui/pdf-viewer.js';
-setupPdfViewer();
-
-// ==================== SCOREBOARD POPOUT ====================
-import { pushScoreboardUpdate, popOutScoreboard } from './ui/scoreboard-popout.js';
-
-import { setupPackBrowser } from './ui/pack-browser.js';
-setupPackBrowser();
-
 // ==================== ACTION DISPATCH ====================
 // Single delegated click handler for everything index.html flags with
-// data-action="...". Buttons rendered dynamically (player panels, sidebar,
+// data-action="…". Buttons rendered dynamically (player panels, sidebar,
 // roster, streak status) are handled by their own delegated listeners
 // inside the relevant ui/* setup functions; this dispatcher covers the
 // static buttons that exist in index.html itself.
@@ -204,13 +202,13 @@ document.addEventListener('click', (e) => {
   if (handler) handler(btn);
 });
 
-// Restore previous session if any. Runs at the end so all functions and DOM
-// elements are available.
+// Restore previous session if any. Runs at the end so all DOM elements,
+// listeners, and reducers are wired up before render fires.
 loadState();
 
 // ==================== ES MODULE EXPORTS (for tests) ====================
-// Phase 1: tests import these to lock current behavior. Subsequent phases
-// will move these into per-domain modules; tests will update import paths.
+// Tests import from main.js to verify the full integration surface.
+// Each export is a pure re-export of an already-imported binding.
 export {
   state,
   // pure

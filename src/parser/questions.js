@@ -1,6 +1,6 @@
 // Pure question-text parser. Given the rich-line structure built from a PDF
-// (see parser/pdf-text.js — currently inlined in legacy.js's parsePdf), this
-// extracts the question + answer for each numbered "N." in the text, attaches
+// (see parser/pdf-text.js, called by loader.js's parsePdf), this extracts
+// the question + answer for each numbered "N." in the text, attaches
 // category metadata, and returns the questions sorted by number.
 
 import { escapeHtml } from '../util/escape.js';

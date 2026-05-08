@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Buffer } from 'node:buffer';
-import { readZip, looksLikePdfOrZip } from '../src/legacy.js';
+import { readZip, looksLikePdfOrZip } from '../src/main.js';
 
 // Build a minimal single-entry zip with STORE (compression=0) so the test
 // doesn't depend on DecompressionStream. readZip filters to `.pdf` entries,

@@ -2,7 +2,7 @@
 // kept in a separate key so we can fail gracefully on quota errors (PDFs are
 // big enough to push localStorage over the limit on some browsers).
 //
-// Note: loadState lives in legacy.js for now because it touches DOM
+// Note: loadState lives in main.js for now because it touches DOM
 // (renderRoster, renderGame). The pure data-layer helpers live here.
 
 import { state } from '../state.js';
