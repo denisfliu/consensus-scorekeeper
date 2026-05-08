@@ -20,39 +20,15 @@ import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, l
 subscribe(() => renderGame());
 
 // ==================== SETUP ====================
-function addPlayer(team) {
-  const input = document.getElementById(`add-player-${team}`);
-  const name = input.value.trim();
-  if (!name) return;
-  const teamObj = team === 'a' ? state.teamA : state.teamB;
-  teamObj.players.push({ name, points: 0 });
-  input.value = '';
-  renderRoster(team);
-  input.focus();
-  if (typeof saveState === 'function') saveState();
-}
-
-function removePlayer(team, index) {
-  const teamObj = team === 'a' ? state.teamA : state.teamB;
-  teamObj.players.splice(index, 1);
-  renderRoster(team);
-  if (typeof saveState === 'function') saveState();
-}
-
-function renderRoster(team) {
-  const teamObj = team === 'a' ? state.teamA : state.teamB;
-  const list = document.getElementById(`roster-${team}`);
-  list.innerHTML = teamObj.players.map((p, i) =>
-    `<li><span>${escapeHtml(p.name)}</span><button onclick="removePlayer('${team}', ${i})">&times;</button></li>`
-  ).join('');
-}
-
-document.getElementById('add-player-a').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer('a'); });
-document.getElementById('add-player-b').addEventListener('keydown', e => { if (e.key === 'Enter') addPlayer('b'); });
-document.getElementById('team-a-name').addEventListener('input', e => { state.teamA.name = e.target.value; if (typeof saveState === 'function') saveState(); });
-document.getElementById('team-b-name').addEventListener('input', e => { state.teamB.name = e.target.value; if (typeof saveState === 'function') saveState(); });
+import { addPlayer, removePlayer, renderRoster, setupSetupScreen } from './ui/setup.js';
+setupSetupScreen();
 
 // ==================== PDF PARSING ====================
+import { parsePdf, processZipBuffer, handleZipUpload } from './loader.js';
+import { readZip, looksLikePdfOrZip } from './parser/zip.js';
+import { extractRichLinesFromPdf } from './parser/pdf-text.js';
+import { SECTION_WORDS, STRUCTURAL_RE, cleanTrailing, extractRichRange, richToHtml, parseQuestions } from './parser/questions.js';
+
 document.getElementById('pdf-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -62,94 +38,6 @@ document.getElementById('pdf-input').addEventListener('change', async (e) => {
     await parsePdf(await file.arrayBuffer(), file.name);
   }
 });
-
-async function handleZipUpload(file) {
-  await processZipBuffer(await file.arrayBuffer());
-}
-
-async function processZipBuffer(buffer) {
-  const statusEl = document.getElementById('pdf-status');
-  statusEl.textContent = 'Reading zip file...';
-  statusEl.className = 'pdf-status';
-  try {
-    const { entries } = await readZip(buffer);
-    const pdfEntries = entries.filter(e => e.name.endsWith('.pdf'));
-    if (pdfEntries.length === 0) {
-      statusEl.textContent = 'No PDF files found in zip.';
-      statusEl.className = 'pdf-status error';
-      return;
-    }
-    state.zipPacks = new Map();
-    for (const entry of pdfEntries) {
-      state.zipPacks.set(entry.name, entry.data);
-    }
-    const names = [...state.zipPacks.keys()].sort();
-    const selectDiv = document.getElementById('zip-pack-select');
-    const dropdown = document.getElementById('zip-pack-dropdown');
-    dropdown.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
-    selectDiv.style.display = 'block';
-    dropdown.onchange = async () => {
-      const selected = dropdown.value;
-      const data = state.zipPacks.get(selected);
-      if (data) await parsePdf(data, selected);
-    };
-    await parsePdf(state.zipPacks.get(names[0]), names[0]);
-  } catch (err) {
-    statusEl.textContent = 'Error reading zip: ' + err.message;
-    statusEl.className = 'pdf-status error';
-  }
-}
-
-import { readZip, looksLikePdfOrZip } from './parser/zip.js';
-import { extractRichLinesFromPdf } from './parser/pdf-text.js';
-
-async function parsePdf(arrayBuffer, filename) {
-  const statusEl = document.getElementById('pdf-status');
-  statusEl.textContent = 'Parsing PDF...';
-  statusEl.className = 'pdf-status';
-  state.packName = filename || null;
-  if (state.pdfViewer) state.pdfViewer.doc = null; // invalidate cached viewer doc
-  try {
-    // pdf.js detaches the ArrayBuffer it's given. Clone for parsing AND
-    // keep a separate Uint8Array copy in state so we can re-render pages
-    // for the "View PDF" overlay later.
-    const dataCopy = arrayBuffer.slice(0);
-    state.pdfBytes = new Uint8Array(arrayBuffer.slice(0));
-    const pdf = await window.pdfjsLib.getDocument({ data: dataCopy }).promise;
-
-    const { lines, combined, richSegments, posMap, lineStartPositions } =
-      await extractRichLinesFromPdf(pdf);
-    const questions = parseQuestions(lines, combined, richSegments, posMap, lineStartPositions);
-    // pageNum and yPos are now set inside parseQuestions (using exact question
-    // positions, not indexOf which collides with substrings like "1. " inside "11. ").
-    const totalSlots = questions.reduce((sum, q) => {
-      if (q.streakRange) return sum + (q.streakRange.end - q.streakRange.start + 1);
-      return sum + 1;
-    }, 0);
-    if (questions.length >= 10) {
-      state.questions = questions;
-      state.hasQuestions = true;
-      const cls = totalSlots === 100 ? 'success' : 'warn';
-      statusEl.textContent = `Parsed ${questions.length} questions (${totalSlots} slots) from "${filename}".` +
-        (totalSlots !== 100 ? ` (Expected 100)` : '');
-      statusEl.className = `pdf-status ${cls}`;
-      if (typeof savePdfBytes === 'function') savePdfBytes(state.pdfBytes);
-      if (typeof saveState === 'function') saveState();
-    } else {
-      state.questions = [];
-      state.hasQuestions = false;
-      statusEl.textContent = `Could not parse questions from "${filename}" (found ${questions.length}). Will use numbered tracking.`;
-      statusEl.className = 'pdf-status warn';
-    }
-  } catch (err) {
-    statusEl.textContent = 'Error parsing PDF: ' + err.message;
-    statusEl.className = 'pdf-status error';
-    state.questions = [];
-    state.hasQuestions = false;
-  }
-}
-
-import { SECTION_WORDS, STRUCTURAL_RE, cleanTrailing, extractRichRange, richToHtml, parseQuestions } from './parser/questions.js';
 
 function padQuestionsToSlots() {
   if (state.hasQuestions && state.questions.length > 0) {
@@ -737,66 +625,8 @@ if (customAwardEl) {
 }
 
 // ==================== DRAG-RESIZE SPLITTERS ====================
-// Each splitter element is a thin strip (transparent hit area + a 2px line
-// rendered via ::before) that the user can drag to resize an adjacent panel.
-function attachSplitter(splitter, target, axis, opts) {
-  if (!splitter || !target) return;
-  const sign = (opts && opts.sign) || 1;
-  const min = (opts && opts.min) || 50;
-  const getMax = () => (opts && typeof opts.max === 'function') ? opts.max() : ((opts && opts.max) || Infinity);
-  let dragging = null;
-  function onMove(e) {
-    if (!dragging) return;
-    e.preventDefault();
-    const coord = axis === 'x' ? e.clientX : e.clientY;
-    const delta = (coord - dragging.startCoord) * sign;
-    const newSize = Math.max(min, Math.min(getMax(), dragging.startSize + delta));
-    target.style[axis === 'x' ? 'width' : 'height'] = newSize + 'px';
-  }
-  function onUp() {
-    dragging = null;
-    splitter.classList.remove('dragging');
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-  }
-  splitter.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const rect = target.getBoundingClientRect();
-    dragging = {
-      startSize: axis === 'x' ? rect.width : rect.height,
-      startCoord: axis === 'x' ? e.clientX : e.clientY,
-    };
-    splitter.classList.add('dragging');
-    document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-}
-// Sidebar (right column): drag left = wider, drag right = narrower → sign -1.
-attachSplitter(
-  document.getElementById('splitter-sidebar'),
-  document.querySelector('.question-sidebar'),
-  'x',
-  { min: 120, max: 400, sign: -1 },
-);
-// Scoreboard: drag down = taller. Custom-award dropdown still works because
-// .scoreboard has no overflow:hidden — its absolute-positioned panel escapes.
-attachSplitter(
-  document.getElementById('splitter-scoreboard'),
-  document.querySelector('.scoreboard'),
-  'y',
-  { min: 60, max: 240 },
-);
-// Question/PDF row: drag down = row taller, panels shrink (panels are flex:1).
-attachSplitter(
-  document.getElementById('splitter-row'),
-  document.querySelector('.question-content-row'),
-  'y',
-  { min: 160, max: () => Math.max(200, window.innerHeight * 0.8) },
-);
+import { setupSplitters } from './ui/splitter.js';
+setupSplitters();
 window.clearAndReload = () => {
   if (!confirm('Clear all saved progress and reload?')) return;
   clearSavedState();
@@ -1247,163 +1077,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 
-// ==================== ONLINE PACK BROWSER ====================
-// Generated by scrape_packs.py — see CLAUDE.md. Re-run when consensustrivia.com adds packs.
-const PACK_CATALOG = [
-  // Post-Secondary
-  { level: 'post-secondary', season: '2024-25', tournament: 'Late Fall Tournament', dir: '2025-t1-ps', filePrefix: 'Consensus 2024-25 T1 PS', packCount: 10 },
-  { level: 'post-secondary', season: '2024-25', tournament: 'Qualifier', dir: '2025-t2-ps', filePrefix: 'Consensus 2024-25 T2 PS', packCount: 11 },
-  { level: 'post-secondary', season: '2024-25', tournament: 'Championship', dir: '2025-t3-ps', filePrefix: 'Consensus 2024-25 T3 PS', packCount: 18 },
-  { level: 'post-secondary', season: '2023-24', tournament: 'Late Fall Tournament', dir: '2024-t2-ps', filePrefix: 'Consensus 2023-24 T2 PS', packCount: 10 },
-  { level: 'post-secondary', season: '2023-24', tournament: 'Qualifier', dir: '2024-t3-ps', filePrefix: 'Consensus 2023-24 T3 PS', packCount: 11 },
-  { level: 'post-secondary', season: '2023-24', tournament: 'Championship', dir: '2024-t4-ps', filePrefix: 'Consensus 2023-24 T4 PS', packCount: 11 },
-  { level: 'post-secondary', season: '2023-24', tournament: 'Summer Open', dir: '2024-t1-open', filePrefix: 'Consensus 2023-24 T1 PS', packCount: 10 },
-  { level: 'post-secondary', season: '2022-23', tournament: 'Season Opener', dir: '2023-t1-ps', filePrefix: 'Consensus 2022-23 T1 PS', packCount: 10 },
-  { level: 'post-secondary', season: '2022-23', tournament: 'Winter Tournament', dir: '2023-t2-ps', filePrefix: 'Consensus 2022-23 T2 PS', packCount: 10 },
-  { level: 'post-secondary', season: '2022-23', tournament: 'Summer Open', dir: '2023-t3-open', filePrefix: 'Consensus 2022-23 T3 PS', packCount: 11 },
-  // High School
-  { level: 'high-school', season: '2024-25', tournament: 'Late Fall Tournament (Junior)', dir: '2025-t1-jr', filePrefix: 'Consensus 2024-25 T1 JR', packCount: 10 },
-  { level: 'high-school', season: '2024-25', tournament: 'Late Fall Tournament', dir: '2025-t1-hs', filePrefix: 'Consensus 2024-25 T1 HS', packCount: 10 },
-  { level: 'high-school', season: '2024-25', tournament: 'Qualifier (B)', dir: '2025-t2-hs-b', filePrefix: 'Consensus 2024-25 T2 HS B', packCount: 10 },
-  { level: 'high-school', season: '2024-25', tournament: 'Qualifier', dir: '2025-t2-hs', filePrefix: 'Consensus 2024-25 T2 HS', packCount: 11 },
-  { level: 'high-school', season: '2024-25', tournament: 'Championship', dir: '2025-t3-hs', filePrefix: 'Consensus 2024-25 T3 HS', packCount: 18 },
-  { level: 'high-school', season: '2023-24', tournament: 'Season Opener (Junior)', dir: '2024-t1-jr', filePrefix: 'Consensus 2023-24 T1 JR', packCount: 10 },
-  { level: 'high-school', season: '2023-24', tournament: 'Season Opener', dir: '2024-t1-hs', filePrefix: 'Consensus 2023-24 T1 HS', packCount: 10 },
-  { level: 'high-school', season: '2023-24', tournament: 'Late Fall Tournament', dir: '2024-t2-hs', filePrefix: 'Consensus 2023-24 T2 HS', packCount: 10 },
-  { level: 'high-school', season: '2023-24', tournament: 'Qualifier', dir: '2024-t3-hs', filePrefix: 'Consensus 2023-24 T3 HS', packCount: 11 },
-  { level: 'high-school', season: '2023-24', tournament: 'Championship', dir: '2024-t4-hs', filePrefix: 'Consensus 2023-24 T4 HS', packCount: 15 },
-  { level: 'high-school', season: '2022-23', tournament: 'Season Opener', dir: '2023-t1-hs', filePrefix: 'Consensus 2022-23 T1 HS', packCount: 10 },
-  { level: 'high-school', season: '2022-23', tournament: 'Winter Qualifier', dir: '2023-t2-hs', filePrefix: 'Consensus 2022-23 T2 HS', packCount: 10 },
-  { level: 'high-school', season: '2022-23', tournament: 'Championship', dir: '2023-t3-hs', filePrefix: 'Consensus 2022-23 T3 HS', packCount: 12 },
-];
-
-const PACK_SITE_BASE = 'https://www.consensustrivia.com';
-const IS_LOCAL_SERVER = location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-// Public proxies are ordered by observed reliability for consensustrivia.com pack PDFs:
-// codetabs has been the fastest/most consistent in practice, so it leads.
-const CORS_PROXIES = [
-  ...(IS_LOCAL_SERVER ? [(url) => `${location.origin}/proxy/${encodeURIComponent(url)}`] : []),
-  (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
-];
-
-function packPdfUrl(t, n) {
-  return `${PACK_SITE_BASE}/${t.level}/packs/${t.dir}/${t.filePrefix} Pack ${n}.pdf`;
-}
-function packZipUrl(t) {
-  return `${PACK_SITE_BASE}/${t.level}/packs/${t.dir}/${t.filePrefix} Packs.zip`;
-}
-
-async function fetchWithFallback(url, statusEl) {
-  const ATTEMPT_TIMEOUT_MS = 12000;
-  const directAttempt = { label: 'direct', fn: (signal) => fetch(url, { signal }) };
-  const proxyAttempts = CORS_PROXIES.map((makeProxy, i) => ({
-    label: i === 0 && IS_LOCAL_SERVER ? 'local proxy' : `proxy ${i + (IS_LOCAL_SERVER ? 0 : 1)}`,
-    fn: (signal) => fetch(makeProxy(url), { signal }),
-  }));
-  // consensustrivia.com serves PDFs with permissive CORS, so direct is always fastest.
-  // Proxies (local Python proxy on localhost, then public CORS proxies) stay in the chain as
-  // fallbacks for environments where direct is blocked.
-  const attempts = [directAttempt, ...proxyAttempts];
-  for (const attempt of attempts) {
-    if (statusEl) statusEl.textContent = `Downloading via ${attempt.label}...`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT_MS);
-    try {
-      const r = await attempt.fn(ctrl.signal);
-      if (!r.ok) continue;
-      const buffer = await r.arrayBuffer();
-      if (looksLikePdfOrZip(buffer)) return buffer;
-    } catch (e) { /* try next */ } finally {
-      clearTimeout(timer);
-    }
-  }
-  throw new Error('All download attempts failed (CORS blocked). Run this page from a local web server (e.g. `python -m http.server`) or download the pack manually from consensustrivia.com and upload it.');
-}
-
-let activeBrowserLevel = 'post-secondary';
-
-function renderBrowser() {
-  const container = document.getElementById('browser-content');
-  const tournaments = PACK_CATALOG.filter(t => t.level === activeBrowserLevel);
-  const bySeason = {};
-  for (const t of tournaments) {
-    if (!bySeason[t.season]) bySeason[t.season] = [];
-    bySeason[t.season].push(t);
-  }
-  const seasons = Object.keys(bySeason).sort().reverse();
-  const html = seasons.map(season => {
-    const rows = bySeason[season].map((t, idx) => {
-      const tIdx = PACK_CATALOG.indexOf(t);
-      const packBtns = [];
-      for (let n = 1; n <= t.packCount; n++) {
-        packBtns.push(`<button class="browser-pack-btn" data-action="pack" data-tidx="${tIdx}" data-pack="${n}" title="Pack ${n}">${n}</button>`);
-      }
-      const zipBtn = `<button class="browser-pack-btn zip" data-action="zip" data-tidx="${tIdx}" title="Download all packs as zip">All ZIP</button>`;
-      return `
-        <div class="browser-tournament">
-          <div class="browser-tournament-name">${escapeHtml(t.tournament)}</div>
-          <div class="browser-tournament-actions">${packBtns.join('')}${zipBtn}</div>
-        </div>`;
-    }).join('');
-    return `<div class="browser-season"><div class="browser-season-label">${escapeHtml(season)} Season</div>${rows}</div>`;
-  }).join('');
-  container.innerHTML = html || '<div style="color:#666;font-size:0.9rem;">No tournaments available.</div>';
-}
-
-document.getElementById('browse-toggle').addEventListener('click', () => {
-  const browser = document.getElementById('pack-browser');
-  const opening = !browser.classList.contains('open');
-  browser.classList.toggle('open', opening);
-  document.getElementById('browse-toggle').textContent = opening
-    ? 'Hide online pack browser'
-    : 'Or browse packs from consensustrivia.com';
-  if (opening) renderBrowser();
-});
-
-document.querySelectorAll('.browser-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    activeBrowserLevel = tab.dataset.level;
-    document.querySelectorAll('.browser-tab').forEach(t => t.classList.toggle('active', t === tab));
-    renderBrowser();
-  });
-});
-
-document.getElementById('browser-content').addEventListener('click', async (e) => {
-  const btn = e.target.closest('.browser-pack-btn');
-  if (!btn) return;
-  const action = btn.dataset.action;
-  const tIdx = parseInt(btn.dataset.tidx, 10);
-  const tournament = PACK_CATALOG[tIdx];
-  if (!tournament) return;
-  const allBtns = document.querySelectorAll('.browser-pack-btn');
-  allBtns.forEach(b => b.disabled = true);
-  const statusEl = document.getElementById('pdf-status');
-  try {
-    if (action === 'pack') {
-      const n = parseInt(btn.dataset.pack, 10);
-      const url = packPdfUrl(tournament, n);
-      statusEl.textContent = `Downloading Pack ${n}...`;
-      statusEl.className = 'pdf-status';
-      const buffer = await fetchWithFallback(url, statusEl);
-      document.getElementById('zip-pack-select').style.display = 'none';
-      await parsePdf(buffer, `${tournament.filePrefix} Pack ${n}.pdf`);
-    } else if (action === 'zip') {
-      const url = packZipUrl(tournament);
-      statusEl.textContent = `Downloading ${tournament.tournament} zip...`;
-      statusEl.className = 'pdf-status';
-      const buffer = await fetchWithFallback(url, statusEl);
-      await processZipBuffer(buffer);
-    }
-  } catch (err) {
-    statusEl.textContent = 'Error: ' + err.message;
-    statusEl.className = 'pdf-status error';
-  } finally {
-    allBtns.forEach(b => b.disabled = false);
-  }
-});
+import { setupPackBrowser } from './ui/pack-browser.js';
+setupPackBrowser();
 
 // Restore previous session if any. Runs at the end so all functions and DOM
 // elements are available.
