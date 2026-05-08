@@ -65,6 +65,7 @@ import {
 } from './ui/pdf-viewer.js';
 import { pushScoreboardUpdate, popOutScoreboard } from './ui/scoreboard-popout.js';
 import { setupPackBrowser } from './ui/pack-browser.js';
+import { startTutorialGame } from './ui/tutorial.js';
 
 // ==================== UI INIT ====================
 setupSetupScreen();
@@ -176,6 +177,7 @@ function loadState() {
 const ACTION_HANDLERS = {
   'add-player': (btn) => addPlayer(btn.dataset.team),
   'start-game': () => startGame(),
+  'start-tutorial': () => startTutorialGame(),
   'clear-and-reload': () => clearAndReload(),
   'pdf-page-prev': () => pdfPagePrev(),
   'pdf-page-next': () => pdfPageNext(),
