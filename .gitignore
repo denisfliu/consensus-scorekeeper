@@ -6,3 +6,5 @@ __pycache__/
 Cons*
 features.md
 _console_inspect.js
+node_modules/
+.vitest/
