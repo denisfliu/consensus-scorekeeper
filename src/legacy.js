@@ -1,9 +1,23 @@
 // ==================== STATE ====================
-import { state } from './state.js';
+import {
+  state,
+  subscribe,
+  addPoints,
+  clearPlayerPoints,
+  clearCurrentQuestion,
+  resetStreak,
+  applyCustomAward as applyCustomAwardReducer,
+  undoLast,
+} from './state.js';
 import { rebuildJailbreakLocks } from './game/jailbreak.js';
 import { rebuildStreakGroups } from './game/streaks.js';
 import { getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize } from './game/categories.js';
 import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, loadPdfBytes, clearSavedState } from './game/persistence.js';
+
+// Wire renderGame as the single state-change subscriber. renderGame is a
+// function declaration, so it's hoisted and accessible here even though
+// its body lives further down the file.
+subscribe(() => renderGame());
 
 // ==================== SETUP ====================
 function addPlayer(team) {
@@ -495,119 +509,9 @@ function renderPlayerPanel(team) {
   panel.innerHTML = html;
 }
 
-function addPoints(team, playerIndex, points) {
-  const teamObj = team === 'a' ? state.teamA : state.teamB;
-  const q = state.questions[state.currentQuestion];
 
-  // On streak questions, force +5 and don't auto-advance.
-  // Streaks are the only question type where both teams can score in the same group,
-  // so streak scoring is bucketed per team: { a?: {playerIndex, totalPoints}, b?: ... }
-  if (q && q.isStreak) {
-    const streakKey = q.streakGroupStart;
-    if (!state.streakScoring[streakKey]) state.streakScoring[streakKey] = {};
-    const bucket = state.streakScoring[streakKey];
 
-    // Within a single team only one player tracks the streak; if a different
-    // player on the same team clicks (misclick correction), wipe that team's
-    // running total and start fresh. The other team's bucket is untouched.
-    const existing = bucket[team];
-    if (existing && existing.playerIndex !== playerIndex) {
-      teamObj.players[existing.playerIndex].points -= existing.totalPoints;
-      teamObj.score -= existing.totalPoints;
-      state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey && h.team === team));
-      bucket[team] = null;
-    }
 
-    if (!bucket[team]) bucket[team] = { playerIndex, totalPoints: 0 };
-    const addPts = 5;
-    teamObj.players[playerIndex].points += addPts;
-    teamObj.score += addPts;
-    bucket[team].totalPoints += addPts;
-    state.history.push({ team, playerIndex, points: addPts, question: state.currentQuestion, isStreak: true, streakKey });
-    state.answeredQuestions.add(state.currentQuestion);
-    renderGame();
-    return;
-  }
-
-  // If question already answered by someone else, remove their points first.
-  // Custom dev-tool awards are not considered "the prior answer" — they stack alongside.
-  if (state.answeredQuestions.has(state.currentQuestion)) {
-    const prevEntry = [...state.history].reverse().find(h => h.question === state.currentQuestion && !h.isStreak && !h.isCustom);
-    if (prevEntry) {
-      const prevTeamObj = prevEntry.team === 'a' ? state.teamA : state.teamB;
-      prevTeamObj.players[prevEntry.playerIndex].points -= prevEntry.points;
-      prevTeamObj.score -= prevEntry.points;
-      state.history = state.history.filter(h => h !== prevEntry);
-    }
-  }
-
-  teamObj.players[playerIndex].points += points;
-  teamObj.score += points;
-  state.history.push({ team, playerIndex, points, question: state.currentQuestion });
-  state.answeredQuestions.add(state.currentQuestion);
-  if (state.currentQuestion < state.questions.length - 1) {
-    state.currentQuestion++;
-  }
-  renderGame();
-}
-
-function clearPlayerPoints(team, playerIndex) {
-  const teamObj = team === 'a' ? state.teamA : state.teamB;
-  const entryIdx = state.history.findIndex(h =>
-    h.question === state.currentQuestion && h.team === team && h.playerIndex === playerIndex && !h.isStreak && !h.isCustom
-  );
-  if (entryIdx === -1) return;
-  const entry = state.history[entryIdx];
-  teamObj.players[playerIndex].points -= entry.points;
-  teamObj.score -= entry.points;
-  state.history.splice(entryIdx, 1);
-  const stillAnswered = state.history.some(h => h.question === state.currentQuestion && !h.isStreak);
-  if (!stillAnswered) state.answeredQuestions.delete(state.currentQuestion);
-  renderGame();
-}
-
-// Clear whoever is assigned points on the current non-streak question.
-// (On a normal question only one entry exists; streaks use resetStreak.)
-function clearCurrentQuestion() {
-  const q = state.questions[state.currentQuestion];
-  if (q && q.isStreak) return;
-  // Only clears the normal-scoring entry. Custom dev-tool awards are not
-  // touched here — undo them with Undo Last or another custom award with
-  // the inverse points.
-  const entryIdx = state.history.findIndex(h => h.question === state.currentQuestion && !h.isStreak && !h.isCustom);
-  if (entryIdx === -1) return;
-  const entry = state.history[entryIdx];
-  const teamObj = entry.team === 'a' ? state.teamA : state.teamB;
-  teamObj.players[entry.playerIndex].points -= entry.points;
-  teamObj.score -= entry.points;
-  state.history.splice(entryIdx, 1);
-  const stillAnswered = state.history.some(h => h.question === state.currentQuestion);
-  if (!stillAnswered) state.answeredQuestions.delete(state.currentQuestion);
-  renderGame();
-}
-
-function resetStreak(streakKey, team) {
-  const bucket = state.streakScoring[streakKey];
-  const entry = bucket && bucket[team];
-  if (!entry || entry.totalPoints === 0) return;
-
-  const teamObj = team === 'a' ? state.teamA : state.teamB;
-  teamObj.players[entry.playerIndex].points -= entry.totalPoints;
-  teamObj.score -= entry.totalPoints;
-
-  state.history = state.history.filter(h => !(h.isStreak && h.streakKey === streakKey && h.team === team));
-  entry.totalPoints = 0;
-
-  const group = state.streakGroups[streakKey];
-  if (group) {
-    for (const m of group.members) {
-      const stillAnswered = state.history.some(h => h.question === m);
-      if (!stillAnswered) state.answeredQuestions.delete(m);
-    }
-  }
-
-  renderGame();
-}
 
 // ==================== DEV TOOLS ====================
 async function reparseCurrentPdf() {
@@ -646,15 +550,12 @@ function applyCustomAward() {
   const playerIndex = parseInt(idxStr, 10);
   const teamObj = team === 'a' ? state.teamA : state.teamB;
   if (!teamObj.players[playerIndex]) { alert('Player not found.'); return; }
-  const questionIdx = qNum - 1;
-  teamObj.players[playerIndex].points += points;
-  teamObj.score += points;
-  state.history.push({ team, playerIndex, points, question: questionIdx, isCustom: true });
-  state.answeredQuestions.add(questionIdx);
+  applyCustomAwardReducer(team, playerIndex, points, qNum - 1);
+  // applyCustomAwardReducer triggers renderGame via the state subscriber.
+  // The remaining work below is dev-tools UI cleanup only.
   document.getElementById('dt-points').value = '';
   const ca = document.getElementById('custom-award');
   if (ca) ca.open = false;
-  renderGame();
 }
 
 // Populate the custom-award dropdown's player list and default Q# whenever it opens.
@@ -671,22 +572,6 @@ function populateCustomAward() {
   if (qInput) qInput.value = (state.currentQuestion || 0) + 1;
 }
 
-function undoLast() {
-  if (state.history.length === 0) return;
-  const last = state.history.pop();
-  const teamObj = last.team === 'a' ? state.teamA : state.teamB;
-  teamObj.players[last.playerIndex].points -= last.points;
-  teamObj.score -= last.points;
-  const stillAnswered = state.history.some(h => h.question === last.question);
-  if (!stillAnswered) state.answeredQuestions.delete(last.question);
-  // Update streak scoring state if this was a streak action
-  if (last.isStreak) {
-    const bucket = state.streakScoring[last.streakKey];
-    if (bucket && bucket[last.team]) bucket[last.team].totalPoints -= last.points;
-  }
-  state.currentQuestion = last.question;
-  renderGame();
-}
 
 // ==================== KEYBINDS ====================
 // Robust visibility check: relies on the inline style toggled by startGame/backToSetup,
