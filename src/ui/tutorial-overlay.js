@@ -9,6 +9,12 @@
 // that outlines it. No separate dim layer or SVG mask needed; the
 // highlighted element naturally accepts clicks since the shadow is purely
 // visual.
+//
+// `target` can be a single CSS selector string OR an array of selectors;
+// the array form highlights every match. The first one is "primary" (gets
+// the dim shadow) and subsequent ones get only the colored outline so the
+// page-level dim doesn't compound. The tooltip positions relative to the
+// primary.
 
 import { state } from '../state.js';
 import { goToQuestion } from './game.js';
@@ -53,7 +59,7 @@ const STEPS = [
   {
     title: 'Jailbreak rounds',
     target: '.bottom-panels',
-    body: `Each player can only buzz <em>once</em> per jailbreak round — once they've answered, they're visually muted ("locked") and can't buzz again for the rest of the round. When every player on a team has buzzed, that team's locks reset.`,
+    body: `Each player can only buzz <em>once</em> per jailbreak round — once they've answered, they're visually muted ("locked") and can't buzz again for the rest of the jailbreak. When every player on a team has buzzed correctly, the players on that team get their locks reset.`,
     autoJumpTo: (q) => q && q.category && /jailbreak/i.test(q.category),
   },
   {
@@ -69,8 +75,8 @@ const STEPS = [
   },
   {
     title: 'When parsing goes wrong',
-    target: '#toggle-inline-pdf-btn',
-    body: `The parser isn't perfect. The <strong>inline PDF</strong> on the right auto-follows the current question (click <em>Expand</em> for fullscreen with arrow keys). Use it to verify the source whenever a question or answer looks suspicious. If the parser <em>did</em> get something wrong, the <strong>+/− Points</strong> dropdown in the scoreboard area is your emergency override — assign or subtract arbitrary points on any question.`,
+    target: ['#custom-award', '#inline-pdf', '#toggle-inline-pdf-btn'],
+    body: `<strong>+/− Points</strong> in the scoreboard area is your emergency override — assign or subtract arbitrary points on any question if the parser misread something. To check the source, the <strong>inline PDF</strong> on the right auto-follows the current question (click <em>Expand</em> for fullscreen with arrow keys). Click <strong>Hide PDF</strong> if you don't need it and want the screen space; click again to bring it back.`,
   },
   {
     title: 'Auto-save',
@@ -91,7 +97,7 @@ const STEPS = [
 
 let stepIdx = 0;
 let active = false;
-let prevTarget = null;
+let prevTargets = []; // array of currently-highlighted Elements
 let tooltipEl = null;
 let escListener = null;
 let resizeListener = null;
@@ -102,7 +108,7 @@ export function startTutorial() {
   stepIdx = 0;
   buildTooltip();
   escListener = (e) => { if (e.key === 'Escape') exitTutorial(); };
-  resizeListener = () => { if (active) positionTooltip(prevTarget); };
+  resizeListener = () => { if (active) positionTooltip(prevTargets[0] || null); };
   document.addEventListener('keydown', escListener);
   window.addEventListener('resize', resizeListener);
   showStep(0);
@@ -129,17 +135,25 @@ function showStep(i) {
     }
   }
 
-  // Move the highlight from the old element to the new one.
-  if (prevTarget) prevTarget.classList.remove('tutorial-highlight');
-  let target = null;
-  if (step.target) {
-    target = document.querySelector(step.target);
-    if (target) target.classList.add('tutorial-highlight');
+  // Move highlights from the old elements to the new ones.
+  for (const el of prevTargets) {
+    el.classList.remove('tutorial-highlight');
+    el.classList.remove('tutorial-highlight-secondary');
   }
-  prevTarget = target;
+  prevTargets = [];
+
+  const selectors = step.target == null ? []
+    : Array.isArray(step.target) ? step.target
+    : [step.target];
+  for (let n = 0; n < selectors.length; n++) {
+    const el = document.querySelector(selectors[n]);
+    if (!el) continue;
+    el.classList.add(n === 0 ? 'tutorial-highlight' : 'tutorial-highlight-secondary');
+    prevTargets.push(el);
+  }
 
   renderTooltip(step, i);
-  positionTooltip(target);
+  positionTooltip(prevTargets[0] || null);
 }
 
 function renderTooltip(step, i) {
@@ -212,8 +226,11 @@ function positionTooltip(target) {
 function exitTutorial() {
   if (!active) return;
   active = false;
-  if (prevTarget) prevTarget.classList.remove('tutorial-highlight');
-  prevTarget = null;
+  for (const el of prevTargets) {
+    el.classList.remove('tutorial-highlight');
+    el.classList.remove('tutorial-highlight-secondary');
+  }
+  prevTargets = [];
   if (tooltipEl) {
     tooltipEl.remove();
     tooltipEl = null;

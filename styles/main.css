@@ -727,6 +727,16 @@ body {
   border-radius: 4px;
   transition: box-shadow 0.18s ease;
 }
+/* Secondary highlights skip the page-dim shadow so the dim doesn't
+   compound when several elements are highlighted at once — only the
+   primary contributes to the dim, the rest just get the colored outline. */
+.tutorial-highlight-secondary {
+  position: relative;
+  z-index: 9001;
+  box-shadow: 0 0 0 3px #2563eb;
+  border-radius: 4px;
+  transition: box-shadow 0.18s ease;
+}
 .tutorial-tooltip {
   position: fixed;
   z-index: 9002;

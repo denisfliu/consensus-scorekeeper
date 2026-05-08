@@ -35,6 +35,11 @@ export async function startTutorialGame() {
   // saved state (if any) and resets tutorialMode to false.
   state.tutorialMode = true;
 
+  // Force the inline PDF visible — if a previous (real) session had hidden
+  // it, the tutorial step that highlights #inline-pdf would have nothing
+  // to point at.
+  state.inlinePdfHidden = false;
+
   // Wipe any in-progress setup so the tutorial always starts from a known shape.
   state.teamA.name = PRESET_ROSTERS.teamA.name;
   state.teamA.players = PRESET_ROSTERS.teamA.players.map((name) => ({ name, points: 0 }));
