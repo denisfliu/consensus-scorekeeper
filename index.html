@@ -342,13 +342,29 @@
     flex-shrink: 0;
     position: relative;
   }
-  /* Custom-award dropdown anchored to the scoreboard's right side. Absolute
-     positioning keeps the team scores centered regardless of dropdown state. */
-  .custom-award {
+  /* Action cluster anchored to the scoreboard's right side: Pop Out + +/- Points.
+     Absolute positioning keeps the team scores centered regardless of state. */
+  .scoreboard-actions {
     position: absolute;
     right: 24px;
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .scoreboard-action-btn {
+    background: #e0e0e0;
+    color: #111;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    border: 1px solid #ccc;
+  }
+  .scoreboard-action-btn:hover { background: #ccc; }
+  /* Position relative so the dropdown panel inside can position absolute against it. */
+  .custom-award {
+    position: relative;
   }
   .custom-award > summary {
     list-style: none;
@@ -479,6 +495,24 @@
     border-radius: 6px;
     margin-bottom: 4px;
     background: #fafafa;
+  }
+  /* Jailbreak: player has already buzzed this round and is waiting for the
+     rest of the team to cycle through. Visually muted but the +10 button is
+     still clickable so the moderator can override. */
+  .player-row.player-row-locked {
+    opacity: 0.45;
+    background: #eee;
+    border-style: dashed;
+  }
+  .player-lock-tag {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    background: #ddd;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
   }
   .player-keybind {
     background: #e0e0e0;
@@ -781,19 +815,22 @@
           <div class="team-name" id="game-team-b-name">Team B</div>
           <div class="score" id="score-b">0</div>
         </div>
-        <details class="custom-award" id="custom-award">
-          <summary title="Award arbitrary points to any player on any question">+/- Points &#9662;</summary>
-          <div class="custom-award-panel">
-            <div style="font-weight:600;margin-bottom:6px">Custom point award</div>
-            <div class="custom-award-row">
-              <select id="dt-player" style="flex:1;min-width:160px"></select>
-              <label>Q# <input id="dt-question" type="number" min="1" style="width:64px"></label>
-              <label>Pts <input id="dt-points" type="number" style="width:72px"></label>
-              <button class="btn" onclick="applyCustomAward()">Apply</button>
+        <div class="scoreboard-actions">
+          <button class="btn scoreboard-action-btn" onclick="popOutScoreboard()" title="Open a presentation-style scoreboard in a new window">Pop Out &#x2197;</button>
+          <details class="custom-award" id="custom-award">
+            <summary title="Award arbitrary points to any player on any question">+/- Points &#9662;</summary>
+            <div class="custom-award-panel">
+              <div style="font-weight:600;margin-bottom:6px">Custom point award</div>
+              <div class="custom-award-row">
+                <select id="dt-player" style="flex:1;min-width:160px"></select>
+                <label>Q# <input id="dt-question" type="number" min="1" style="width:64px"></label>
+                <label>Pts <input id="dt-points" type="number" style="width:72px"></label>
+                <button class="btn" onclick="applyCustomAward()">Apply</button>
+              </div>
+              <div class="custom-award-hint">No restrictions. Negative values subtract. Use Undo Last to reverse.</div>
             </div>
-            <div class="custom-award-hint">No restrictions. Negative values subtract. Use Undo Last to reverse.</div>
-          </div>
-        </details>
+          </details>
+        </div>
       </div>
 
       <!-- Drag-resize line below the scoreboard. -->
@@ -888,6 +925,10 @@
     pdfBytes: null,
     pdfViewer: { doc: null, currentPage: 1, inlinePage: null },
     inlinePdfHidden: false,
+    // Jailbreak lockout state — which player indices on each team have already
+    // buzzed in the current jailbreak round. Reset to [] when the team is full
+    // (rebuildJailbreakLocks reconstructs this from state.history every render).
+    jailbreakLocked: { a: [], b: [] },
   };
 
   // ==================== SETUP ====================
@@ -1626,12 +1667,32 @@
     renderGame();
   }
 
+  // Reconstruct jailbreak per-team lockouts from state.history. Walking
+  // history in order means that any change (undo, clear, custom award) is
+  // reflected automatically — we never have to keep two sources of truth in
+  // sync. A team's lock resets the moment every player on it has buzzed.
+  function rebuildJailbreakLocks() {
+    state.jailbreakLocked = { a: [], b: [] };
+    for (const h of state.history) {
+      if (h.isStreak) continue;
+      const q = state.questions[h.question];
+      if (!q || !q.category || !/jailbreak/i.test(q.category)) continue;
+      const lock = state.jailbreakLocked[h.team];
+      if (!lock.includes(h.playerIndex)) lock.push(h.playerIndex);
+      const teamPlayers = h.team === 'a' ? state.teamA.players : state.teamB.players;
+      if (teamPlayers.length > 0 && lock.length >= teamPlayers.length) {
+        state.jailbreakLocked[h.team] = [];
+      }
+    }
+  }
+
   function backToSetup() {
     document.getElementById('setup').style.display = 'block';
     document.getElementById('game').style.display = 'none';
   }
 
   function renderGame() {
+    rebuildJailbreakLocks();
     document.getElementById('game-team-a-name').textContent = state.teamA.name;
     document.getElementById('game-team-b-name').textContent = state.teamB.name;
     document.getElementById('score-a').textContent = state.teamA.score;
@@ -1641,6 +1702,7 @@
     renderPlayerPanel('b');
     document.getElementById('undo-btn').disabled = state.history.length === 0;
     if (typeof saveState === 'function') saveState();
+    if (typeof pushScoreboardUpdate === 'function') pushScoreboardUpdate();
   }
 
   function getInitials(name) {
@@ -1906,15 +1968,21 @@
     let html = `<h3>${escapeHtml(teamObj.name)}</h3>`;
     const currentQ = state.questions[state.currentQuestion];
     const isStreak = currentQ && currentQ.isStreak;
+    const isJailbreak = !!(currentQ && currentQ.category && /jailbreak/i.test(currentQ.category));
+    const lockSet = isJailbreak ? state.jailbreakLocked[team] : null;
     html += teamObj.players.map((p, i) => {
       const globalIdx = offset + i;
       const keybind = globalIdx < 10 ? (globalIdx + 1) % 10 : null;
       const scoreBtn = isStreak
         ? `<button class="btn btn-5" onclick="addPoints('${team}', ${i}, 5)">+5</button>`
         : `<button class="btn btn-10" onclick="addPoints('${team}', ${i}, 10)">+10</button>`;
-      return `<div class="player-row">
+      const locked = lockSet && lockSet.includes(i);
+      const lockedClass = locked ? ' player-row-locked' : '';
+      const lockedTag = locked ? '<span class="player-lock-tag" title="Already buzzed this jailbreak round">locked</span>' : '';
+      return `<div class="player-row${lockedClass}">
         ${keybind !== null ? `<span class="player-keybind">${keybind}</span>` : ''}
         <span class="player-name">${escapeHtml(p.name)}</span>
+        ${lockedTag}
         <span class="player-points">${p.points}</span>
         <div class="player-actions">
           ${scoreBtn}
@@ -2384,6 +2452,7 @@
   window.toggleInlinePdf = toggleInlinePdf;
   window.reparseCurrentPdf = reparseCurrentPdf;
   window.applyCustomAward = applyCustomAward;
+  window.popOutScoreboard = popOutScoreboard;
 
   // Refresh the custom-award dropdown's player list + default Q# each time it opens.
   const customAwardEl = document.getElementById('custom-award');
@@ -2608,6 +2677,333 @@
       syncInlinePdfToQuestion();
     }
     if (typeof saveState === 'function') saveState();
+  }
+
+  // ==================== SCOREBOARD POPOUT ====================
+  // A presentation-style scoreboard rendered in a separate window so the
+  // moderator can show scores + current-question context to players (e.g., on
+  // a projector / second monitor). The main window broadcasts state via
+  // BroadcastChannel; the popout listens and re-renders.
+  const SCOREBOARD_CHANNEL = 'consensus-scoreboard';
+  const scoreboardChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel(SCOREBOARD_CHANNEL) : null;
+  if (scoreboardChannel) {
+    scoreboardChannel.onmessage = (e) => {
+      if (e.data && e.data.type === 'request-state') pushScoreboardUpdate();
+    };
+  }
+
+  // For a "Splits N: <title>" category, find the paired category. In a
+  // Consensus pack, each splits round has TWO sub-categories played
+  // back-to-back (e.g., "Splits 1: Gothic Literature" then "Splits 2:
+  // Mountaineering"). We locate the partner by walking state.questions from
+  // the current position toward the other half of the pair.
+  function getSplitPair(currentIdx, currentCategory) {
+    if (!currentCategory) return null;
+    const m = currentCategory.match(/^Splits (\d+):\s*/);
+    if (!m) return null;
+    const curNum = parseInt(m[1], 10);
+    const targetPrefix = curNum === 1 ? 'Splits 2:' : 'Splits 1:';
+    // Walk forward from current for Splits-2-given-Splits-1, backward for the
+    // reverse. Stop on any non-splits category in between (defensive).
+    const dir = curNum === 1 ? 1 : -1;
+    let i = currentIdx + dir;
+    while (i >= 0 && i < state.questions.length) {
+      const c = state.questions[i] && state.questions[i].category;
+      if (c && c.startsWith(targetPrefix)) return { current: currentCategory, partner: c, currentNum: curNum };
+      // Skip same-pair half (current's own category) and missing slots.
+      if (c && !c.startsWith('Splits ') && !state.questions[i].isMissing) break;
+      i += dir;
+    }
+    return null;
+  }
+
+  // Counts the size of the contiguous category-instance the current question
+  // belongs to. Walks forward from currentIdx, accepting questions that share
+  // the same category AND have posInCategory == expected (currentPos+1, +2, ...).
+  // Stops as soon as the chain breaks — which correctly distinguishes between
+  // two separate categories that happen to share the same name (e.g., the pack
+  // has two unrelated "Set of 4" sections; without this, both would be lumped
+  // together and a 4-question category would display as 1/8).
+  function getCategoryRunSize(currentIdx, category, currentPos) {
+    if (!category || !currentPos) return null;
+    let total = currentPos;
+    let expected = currentPos + 1;
+    for (let i = currentIdx + 1; i < state.questions.length; i++) {
+      const qq = state.questions[i];
+      if (!qq || qq.category !== category || qq.posInCategory !== expected) break;
+      total = expected;
+      expected++;
+    }
+    return total;
+  }
+
+  // Build the live state snapshot the popout renders.
+  function getScoreboardSnapshot() {
+    const q = state.questions[state.currentQuestion] || {};
+    let posNum = null, posTotal = null;
+    // Streaks intentionally show no position counter — revealing "1 of 3"
+    // would tell the players exactly how many more parts the streak has.
+    if (!q.isStreak && q.posInCategory) {
+      posNum = q.posInCategory;
+      if (q.category) {
+        posTotal = getCategoryRunSize(state.currentQuestion, q.category, q.posInCategory);
+      }
+    }
+    const splitPair = getSplitPair(state.currentQuestion, q.category);
+    const isJailbreak = !!(q.category && /jailbreak/i.test(q.category));
+    return {
+      type: 'state',
+      teamA: {
+        name: state.teamA.name,
+        score: state.teamA.score,
+        players: state.teamA.players.map(p => p.name),
+      },
+      teamB: {
+        name: state.teamB.name,
+        score: state.teamB.score,
+        players: state.teamB.players.map(p => p.name),
+      },
+      qNum: q.num || (state.currentQuestion + 1),
+      qTotal: state.questions.length || 100,
+      category: q.category || null,
+      posNum, posTotal,
+      packName: state.packName || null,
+      splitPair, // { current, partner, currentNum } or null
+      jailbreak: isJailbreak ? {
+        lockedA: [...state.jailbreakLocked.a],
+        lockedB: [...state.jailbreakLocked.b],
+      } : null,
+    };
+  }
+
+  function pushScoreboardUpdate() {
+    if (!scoreboardChannel) return;
+    try { scoreboardChannel.postMessage(getScoreboardSnapshot()); } catch (e) { /* ignore */ }
+  }
+
+  // HTML written into the popout window. Self-contained: own <style> and
+  // <script> that subscribe to the same BroadcastChannel.
+  const SCOREBOARD_POPOUT_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consensus Scoreboard</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f0f10;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+  .pack { font-size: 1rem; color: #777; margin-bottom: 18px; letter-spacing: 0.04em; }
+  .scores {
+    display: flex;
+    align-items: center;
+    gap: 8vw;
+    margin-bottom: 6vh;
+  }
+  .team { display: flex; flex-direction: column; align-items: center; }
+  .team-name {
+    font-size: clamp(1.4rem, 3vw, 2.6rem);
+    font-weight: 600;
+    margin-bottom: 0.4em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .team.a .team-name { color: #5b9eff; }
+  .team.b .team-name { color: #ff7a7a; }
+  .team-score {
+    font-size: clamp(5rem, 14vw, 12rem);
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .divider { font-size: clamp(4rem, 10vw, 8rem); color: #444; font-weight: 800; }
+  .info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .qline {
+    font-size: clamp(1.2rem, 2.4vw, 2rem);
+    font-weight: 600;
+    color: #ddd;
+  }
+  .qline .num { color: #fff; font-variant-numeric: tabular-nums; }
+  .catline {
+    font-size: clamp(1rem, 1.8vw, 1.5rem);
+    color: #aaa;
+  }
+  .catline .pos { color: #888; margin-left: 8px; font-variant-numeric: tabular-nums; }
+  /* Splits view: both sub-categories shown side by side, current one highlighted. */
+  .splitline {
+    font-size: clamp(1rem, 1.8vw, 1.5rem);
+    color: #777;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .splitline .label { color: #555; font-weight: 600; }
+  .splitline .opt { padding: 4px 10px; border-radius: 6px; }
+  .splitline .opt.current { color: #fff; background: #2563eb; font-weight: 600; }
+  .splitline .opt.other { color: #888; }
+  .splitline .vs { color: #444; font-size: 0.8em; }
+  /* Jailbreak: both rosters shown so the players know who's available to buzz. */
+  .rosters {
+    display: none;
+    gap: clamp(2rem, 6vw, 5rem);
+    margin-top: 4vh;
+    align-items: flex-start;
+  }
+  .roster {
+    flex: 1;
+    max-width: 320px;
+    text-align: left;
+  }
+  .roster .roster-name {
+    font-size: clamp(1rem, 1.6vw, 1.4rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+  .roster.a .roster-name { color: #5b9eff; }
+  .roster.b .roster-name { color: #ff7a7a; }
+  .roster ul { list-style: none; padding: 0; margin: 0; }
+  .roster li {
+    font-size: clamp(1.1rem, 1.8vw, 1.6rem);
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    background: #1c1c1f;
+  }
+  .roster li.locked {
+    opacity: 0.35;
+    text-decoration: line-through;
+    background: #161617;
+  }
+</style>
+</head>
+<body>
+  <div class="pack" id="pack"></div>
+  <div class="scores">
+    <div class="team a">
+      <div class="team-name" id="ta-name">Team A</div>
+      <div class="team-score" id="ta-score">0</div>
+    </div>
+    <div class="divider">:</div>
+    <div class="team b">
+      <div class="team-name" id="tb-name">Team B</div>
+      <div class="team-score" id="tb-score">0</div>
+    </div>
+  </div>
+  <div class="info">
+    <div class="qline">Question <span class="num" id="qnum">—</span> / <span class="num" id="qtotal">100</span></div>
+    <div class="catline" id="catline"><span id="category"></span><span class="pos" id="pos"></span></div>
+    <div class="splitline" id="splitline" style="display:none">
+      <span class="label">Splits:</span>
+      <span class="opt" id="split-1"></span>
+      <span class="vs">vs</span>
+      <span class="opt" id="split-2"></span>
+      <span class="pos" id="split-pos"></span>
+    </div>
+  </div>
+  <div class="rosters" id="rosters">
+    <div class="roster a">
+      <div class="roster-name" id="ra-name">Team A</div>
+      <ul id="ra-list"></ul>
+    </div>
+    <div class="roster b">
+      <div class="roster-name" id="rb-name">Team B</div>
+      <ul id="rb-list"></ul>
+    </div>
+  </div>
+<script>
+(() => {
+  const ch = new BroadcastChannel('consensus-scoreboard');
+  function $(id) { return document.getElementById(id); }
+  function bareSplitTitle(c) {
+    return (c || '').replace(/^Splits \\d+:\\s*/, '').trim();
+  }
+  function update(d) {
+    if (!d) return;
+    $('ta-name').textContent = d.teamA.name;
+    $('ta-score').textContent = d.teamA.score;
+    $('tb-name').textContent = d.teamB.name;
+    $('tb-score').textContent = d.teamB.score;
+    $('qnum').textContent = d.qNum;
+    $('qtotal').textContent = d.qTotal;
+    $('pack').textContent = d.packName || '';
+    document.title = (d.teamA.name + ' ' + d.teamA.score + ' \\u2014 ' + d.teamB.score + ' ' + d.teamB.name);
+
+    // Splits view shows both sub-categories with the current one highlighted.
+    if (d.splitPair) {
+      const cur = bareSplitTitle(d.splitPair.current);
+      const other = bareSplitTitle(d.splitPair.partner);
+      const opt1 = $('split-1'), opt2 = $('split-2');
+      const isFirst = d.splitPair.currentNum === 1;
+      opt1.textContent = isFirst ? cur : other;
+      opt2.textContent = isFirst ? other : cur;
+      opt1.className = 'opt ' + (isFirst ? 'current' : 'other');
+      opt2.className = 'opt ' + (isFirst ? 'other' : 'current');
+      $('split-pos').textContent = (d.posNum && d.posTotal) ? '(' + d.posNum + ' / ' + d.posTotal + ')' : '';
+      $('catline').style.display = 'none';
+      $('splitline').style.display = 'flex';
+    } else {
+      $('category').textContent = d.category || '';
+      $('pos').textContent = (d.posNum && d.posTotal) ? '(' + d.posNum + ' / ' + d.posTotal + ')' : '';
+      $('catline').style.display = '';
+      $('splitline').style.display = 'none';
+    }
+
+    // Jailbreak rosters: show both team rosters with locked players muted.
+    if (d.jailbreak) {
+      $('ra-name').textContent = d.teamA.name;
+      $('rb-name').textContent = d.teamB.name;
+      const buildRoster = (players, locked) => players.map((name, i) => {
+        const cls = locked.indexOf(i) !== -1 ? 'locked' : '';
+        const safe = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return '<li class="' + cls + '">' + safe + '</li>';
+      }).join('');
+      $('ra-list').innerHTML = buildRoster(d.teamA.players || [], d.jailbreak.lockedA || []);
+      $('rb-list').innerHTML = buildRoster(d.teamB.players || [], d.jailbreak.lockedB || []);
+      $('rosters').style.display = 'flex';
+    } else {
+      $('rosters').style.display = 'none';
+    }
+  }
+  ch.onmessage = (e) => { if (e.data && e.data.type === 'state') update(e.data); };
+  // Ask the main window for current state.
+  ch.postMessage({ type: 'request-state' });
+})();
+<\/script>
+</body>
+</html>`;
+
+  function popOutScoreboard() {
+    const w = window.open('', 'consensus-scoreboard-popout', 'width=900,height=560,resizable=yes');
+    if (!w) {
+      alert('Popup blocked. Allow popups for this site to use the scoreboard popout.');
+      return;
+    }
+    w.document.open();
+    w.document.write(SCOREBOARD_POPOUT_HTML);
+    w.document.close();
+    // Push current state immediately too — the popout's request-state on load
+    // also asks, but if it's an existing window getting reused this guarantees
+    // a refresh.
+    pushScoreboardUpdate();
   }
 
   // Esc + arrow keys inside the overlay
