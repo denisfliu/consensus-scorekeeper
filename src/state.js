@@ -24,6 +24,10 @@ export const state = {
   // buzzed in the current jailbreak round. Reset to [] when the team is full
   // (rebuildJailbreakLocks reconstructs this from state.history every render).
   jailbreakLocked: { a: [], b: [] },
+  // Tutorial sandbox flag. When true, game/persistence.js's saveState +
+  // savePdfBytes early-return so the tutorial doesn't overwrite any
+  // saved real game. Transient — defaults to false on every page load.
+  tutorialMode: false,
 };
 
 // ==================== SUBSCRIBE ====================
