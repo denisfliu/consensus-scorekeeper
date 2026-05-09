@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Consensus Trivia — Rules Briefing</title>
+<style>
+  :root {
+    --fg: #000;
+    --bg: #fff;
+    --muted: #555;
+    --rule: #000;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: Georgia, "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #deck {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 6vh 8vw;
+    overflow-y: auto;
+    flex-direction: column;
+  }
+  .slide.active { display: flex; }
+  .slide h1 {
+    font-size: 4.2vw;
+    font-weight: bold;
+    margin: 0 0 1.2rem 0;
+    line-height: 1.1;
+  }
+  .slide h2 {
+    font-size: 3vw;
+    font-weight: bold;
+    margin: 0 0 1.2rem 0;
+    line-height: 1.15;
+    border-bottom: 2px solid var(--rule);
+    padding-bottom: 0.4rem;
+  }
+  .slide h3 {
+    font-size: 1.6vw;
+    font-weight: bold;
+    margin: 1.2rem 0 0.4rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .slide p, .slide li {
+    font-size: 1.55vw;
+    line-height: 1.45;
+    margin: 0.4rem 0;
+  }
+  .slide ul {
+    margin: 0.4rem 0 0.4rem 1.5rem;
+    padding: 0;
+  }
+  .slide ul li { margin: 0.35rem 0; }
+  .center {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .center h1 { font-size: 6vw; }
+  .center .subtitle {
+    font-size: 2.2vw;
+    color: var(--muted);
+    margin-top: 0.5rem;
+  }
+  .q {
+    margin: 0.6rem 0;
+    padding: 0.8rem 1rem;
+    border-left: 3px solid var(--rule);
+    background: transparent;
+  }
+  .q .qtext {
+    font-style: italic;
+    font-size: 1.5vw;
+    line-height: 1.4;
+  }
+  .q .ans {
+    margin-top: 0.4rem;
+    font-weight: bold;
+    font-size: 1.5vw;
+  }
+  .q .ans::before {
+    content: "A: ";
+    font-weight: bold;
+  }
+  .label {
+    display: inline-block;
+    font-size: 1vw;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+  }
+  .definition {
+    font-size: 1.6vw;
+    line-height: 1.45;
+    margin-bottom: 1rem;
+  }
+  .big-rule {
+    font-size: 2.4vw;
+    font-weight: bold;
+    line-height: 1.3;
+    margin: 0.5rem 0 1.2rem 0;
+  }
+  .emphasis-num {
+    font-size: 9vw;
+    font-weight: bold;
+    line-height: 1;
+    margin: 0;
+  }
+  .pill {
+    display: inline-block;
+    border: 2px solid var(--rule);
+    padding: 0.2rem 0.7rem;
+    font-size: 1.2vw;
+    margin-right: 0.3rem;
+    margin-bottom: 0.3rem;
+  }
+  .footer {
+    position: absolute;
+    bottom: 1.4vh;
+    left: 8vw;
+    right: 8vw;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.95vw;
+    color: var(--muted);
+  }
+  .pos { font-variant-numeric: tabular-nums; }
+  .reveal-points-table {
+    border-collapse: collapse;
+    margin: 0.6rem 0 0 0;
+  }
+  .reveal-points-table td {
+    padding: 0.2rem 1.2rem 0.2rem 0;
+    font-size: 1.4vw;
+  }
+  .reveal-points-table td:first-child { font-weight: bold; }
+  .source {
+    color: var(--muted);
+    font-size: 1vw;
+    margin-top: 0.6rem;
+  }
+  /* Print to PDF: each slide on its own page */
+  @media print {
+    .slide {
+      display: flex !important;
+      position: relative;
+      page-break-after: always;
+      height: 100vh;
+      inset: auto;
+    }
+    .footer { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="deck">
+
+  <!-- 1. Title -->
+  <section class="slide center">
+    <h1>Consensus Trivia</h1>
+    <p class="subtitle">Rules briefing for participants</p>
+  </section>
+
+  <!-- 2. Pack format -->
+  <section class="slide">
+    <h2>The pack</h2>
+    <ul>
+      <li><strong>100 questions</strong> per pack.</li>
+      <li>Each pack is divided into a sequence of <strong>categories</strong>.</li>
+      <li>Most questions are worth <strong>10 points</strong>; a few categories score differently.</li>
+    </ul>
+  </section>
+
+  <!-- 3. Categories overview -->
+  <section class="slide">
+    <h2>The categories</h2>
+    <p class="definition">Every pack mixes together questions from these category types. Each one has its own rules for how it plays.</p>
+    <p>
+      <span class="pill">Blitz</span>
+      <span class="pill">Set</span>
+      <span class="pill">Mystery</span>
+      <span class="pill">Linked Set</span>
+      <span class="pill">Double Jump</span>
+      <span class="pill">Streak</span>
+      <span class="pill">Jailbreak</span>
+      <span class="pill">Split</span>
+      <span class="pill">Jackpot</span>
+    </p>
+    <p class="source">All examples in the next slides are taken from <em>Consensus 2024-25 Post-Secondary T1 Packs</em>.</p>
+  </section>
+
+  <!-- 4. Blitz -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Blitz</h2>
+    <p class="definition">A specified number of <strong>assorted-subject questions</strong>, all open to both teams. Each worth 10 points.</p>
+    <h3>Example — Pack 1, 5-Part Blitz</h3>
+    <div class="q">
+      <div class="qtext">The trombones most commonly seen in school settings are what kind of trombone?</div>
+      <div class="ans">tenor trombone</div>
+    </div>
+    <div class="q">
+      <div class="qtext">In what form of punishment was a citizen of ancient Athens expelled from the city for 10 years?</div>
+      <div class="ans">ostracism</div>
+    </div>
+  </section>
+
+  <!-- 5. Set -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Set</h2>
+    <p class="definition">A group of questions on a <strong>single announced subject</strong>. All open to both teams, 10 points each.</p>
+    <h3>Example — Pack 1, Set of 4: Months</h3>
+    <div class="q">
+      <div class="qtext">The ancient Roman month of Quintilis is now known by what name?</div>
+      <div class="ans">July</div>
+    </div>
+    <div class="q">
+      <div class="qtext">Which month is named for a two-faced Roman god?</div>
+      <div class="ans">January</div>
+    </div>
+  </section>
+
+  <!-- 6. Mystery -->
+  <section class="slide">
+    <span class="label">Category — new for 2024-25</span>
+    <h2>Mystery</h2>
+    <p class="definition">A group of questions whose answers all fit an <strong>undisclosed theme</strong>. The subject is not announced — figuring it out is part of the fun. Open to both teams, 10 points each.</p>
+    <h3>Example — Pack 3, 4-Part Mystery</h3>
+    <div class="q">
+      <div class="qtext">What company's iconic product is a rectangular metal lighter with a hinged lid?</div>
+      <div class="ans">Zippo</div>
+    </div>
+    <div class="q">
+      <div class="qtext">Jewish communities in New York and Montreal developed different distinctive versions of what bread product?</div>
+      <div class="ans">bagels</div>
+    </div>
+    <div class="q">
+      <div class="qtext">What power forward joined Miami in 2023 after spending nine seasons with the Cleveland Cavaliers?</div>
+      <div class="ans">Kevin Love</div>
+    </div>
+    <div class="q">
+      <div class="qtext">During World War II, what model of fighter aircraft was heavily used by the Japanese Air Force?</div>
+      <div class="ans">Mitsubishi A6M Zero</div>
+    </div>
+    <p class="source">Theme: every answer can mean <em>zero / nothing</em> (Zippo, bagel, "love" in tennis, Zero).</p>
+  </section>
+
+  <!-- 7. Linked Set -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Linked Set</h2>
+    <p class="definition">Assorted-subject questions in which the answer to each question is <strong>somehow related to the next question</strong>. Open to both teams, 10 points each.</p>
+    <p class="definition"><em>Note: in 2024-25 PS packs, Mystery and Linked Set are sometimes combined into a single category called "Mystery Link".</em></p>
+  </section>
+
+  <!-- 8. Double Jump -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Double Jump</h2>
+    <p class="definition">Two thematically-linked questions: a <strong>first jump</strong> and a <strong>second jump</strong>.</p>
+    <ul>
+      <li>The first jump is open to both teams.</li>
+      <li>If the first jump is answered correctly, the <strong>second jump goes only to the team that got it</strong>.</li>
+      <li>If no one gets the first jump, the second jump is still open to both teams.</li>
+      <li>Each jump is worth 10 points.</li>
+    </ul>
+    <h3>Example — Pack 1</h3>
+    <div class="q">
+      <div class="qtext"><strong>1st jump.</strong> Glucose is composed of what three elements?</div>
+      <div class="ans">carbon AND oxygen AND hydrogen</div>
+    </div>
+    <div class="q">
+      <div class="qtext"><strong>2nd jump.</strong> A glucose molecule with what additional element in place of one of the hydroxyl groups is used as a common positron source for PET scans?</div>
+      <div class="ans">fluorine</div>
+    </div>
+  </section>
+
+  <!-- 9. Streak -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Streak</h2>
+    <p class="definition">Name multiple items that satisfy some given criteria.</p>
+    <ul>
+      <li>The first player to buzz gives answers <strong>one at a time</strong> until they make a mistake or pass ("done"/"pass").</li>
+      <li><strong>Wrong or repeated answer → 0 points for that team.</strong> Otherwise, <strong>5 points per correct answer</strong>.</li>
+      <li>The other team may then buzz and name any remaining answers under the same scoring.</li>
+    </ul>
+    <h3>Example — Pack 1</h3>
+    <div class="q">
+      <div class="qtext">Name up to any five of the individuals voted by the public as the top 10 Greatest Canadians in a 2004 series produced by the CBC.</div>
+      <div class="ans">Tommy Douglas; Terry Fox; Pierre Trudeau; Frederick Banting; David Suzuki; Lester B. Pearson; Don Cherry; John A. Macdonald; Alexander Graham Bell; Wayne Gretzky</div>
+    </div>
+  </section>
+
+  <!-- 10. Jailbreak -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Jailbreak</h2>
+    <p class="definition">At least 12 assorted-subject questions, open to both teams. Each correct answer earns 10 points — <em>but</em>:</p>
+    <ul>
+      <li>Once you answer one correctly, you <strong>can no longer buzz</strong>.</li>
+      <li>Once <strong>all four</strong> players on a team have each answered one, the team "breaks out" and everyone may buzz again.</li>
+      <li><strong>No consultation</strong> at all during a Jailbreak — verbal <em>or</em> non-verbal. Signals or gestures to teammates before buzzing are treated as a wrong answer.</li>
+    </ul>
+  </section>
+
+  <!-- 11. Split -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Split</h2>
+    <p class="definition">Two sets of four questions, each on its own announced subject. Active players <strong>pair up into two duos</strong> — one duo per subject.</p>
+    <ul>
+      <li>Subjects are announced <em>before</em> assigning duos. <strong>No prior coordination on possible answers.</strong></li>
+      <li>Only the assigned duo may buzz on their subject. Consultation must be <strong>out loud</strong> — no whispering.</li>
+      <li>10 points per question.</li>
+    </ul>
+    <h3>Example — Pack 1, Splits: Pokémon &amp; Antarctica</h3>
+    <div class="q">
+      <div class="qtext"><strong>Pokémon.</strong> What Pokémon can never have more than one HP due to the effects of its ability Wonder Guard?</div>
+      <div class="ans">Shedinja</div>
+    </div>
+    <div class="q">
+      <div class="qtext"><strong>Antarctica.</strong> Air New Zealand Flight 901 crashed into what mountain, the highest active volcano in Antarctica?</div>
+      <div class="ans">Mount Erebus</div>
+    </div>
+  </section>
+
+  <!-- 12. Jackpot -->
+  <section class="slide">
+    <span class="label">Category</span>
+    <h2>Jackpot</h2>
+    <p class="definition">A single answer revealed across <strong>four parts of descending difficulty</strong>. Each team gets up to two buzzes total across all four parts.</p>
+    <table class="reveal-points-table">
+      <tr><td>Part 1</td><td>40 points</td></tr>
+      <tr><td>Part 2</td><td>30 points</td></tr>
+      <tr><td>Part 3</td><td>20 points</td></tr>
+      <tr><td>Part 4</td><td>10 points</td></tr>
+    </table>
+    <h3>Example — Pack 1</h3>
+    <div class="q">
+      <div class="qtext"><strong>Part 1 (40).</strong> What was the first name of a goalie suspended from their national team for saying "You can't live by big names. You can't live in the past" after being benched for a 4-0 loss to Brazil?</div>
+    </div>
+    <div class="q">
+      <div class="qtext"><strong>Part 2 (30).</strong> This English word titles the Israeli national anthem, known in Hebrew as "Hatikvah".</div>
+    </div>
+    <div class="q">
+      <div class="qtext"><strong>Part 3 (20).</strong> In one poem, Emily Dickinson described this as "A thing with feathers".</div>
+    </div>
+    <div class="q">
+      <div class="qtext"><strong>Part 4 (10).</strong> According to Greek myth, this was the only thing that remained after Pandora's Box was opened.</div>
+      <div class="ans">hope</div>
+    </div>
+  </section>
+
+  <!-- 13. Section divider -->
+  <section class="slide center">
+    <h1>If you've played quizbowl…</h1>
+    <p class="subtitle">three things to keep in mind.</p>
+  </section>
+
+  <!-- 14. Buzz on every question -->
+  <section class="slide">
+    <p class="emphasis-num">1.</p>
+    <h2>You must buzz to answer <em>every</em> question.</h2>
+    <p class="big-rule">There are no "bonuses" you just speak the answer to.</p>
+    <ul>
+      <li>Open questions: buzz before giving your answer.</li>
+      <li><strong>Double Jumps:</strong> the second jump still requires a buzz, even when only your team can answer it.</li>
+      <li>If you start answering without buzzing, it counts as no answer.</li>
+    </ul>
+  </section>
+
+  <!-- 15. Confer until buzz -->
+  <section class="slide">
+    <p class="emphasis-num">2.</p>
+    <h2>Confer freely — until someone buzzes.</h2>
+    <p class="big-rule">Verbal or non-verbal consultation is allowed on every question.</p>
+    <ul>
+      <li>Talk it out, point at notes, nod, whatever you like — <strong>until the buzz</strong>.</li>
+      <li>Once a player on your team buzzes, <strong>no more consultation</strong> — that player must give the answer.</li>
+      <li>Exception: <strong>Jailbreak</strong> forbids any consultation at all. <strong>Splits</strong> only allow consultation within your duo, out loud.</li>
+    </ul>
+  </section>
+
+  <!-- 16. Strict timing -->
+  <section class="slide">
+    <p class="emphasis-num">3.</p>
+    <h2>Three seconds to buzz. One second to answer.</h2>
+    <p class="big-rule">After the reader finishes the question:</p>
+    <ul>
+      <li><strong>3 seconds</strong> to buzz (unless the question states otherwise).</li>
+      <li>After buzzing, <strong>1 second</strong> to begin your answer.</li>
+      <li>If the first team buzzes incorrectly, the other team gets <strong>another 3 seconds</strong>.</li>
+    </ul>
+    <p class="big-rule">We will be enforcing these times <em>strictly</em>.</p>
+  </section>
+
+  <!-- 17. Closing -->
+  <section class="slide center">
+    <h1>Good luck.</h1>
+    <p class="subtitle">Questions before we start?</p>
+  </section>
+
+</div>
+
+<div class="footer">
+  <span>Consensus Trivia — Rules briefing</span>
+  <span class="pos"><span id="cur">1</span> / <span id="total">1</span></span>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const cur = document.getElementById('cur');
+  const total = document.getElementById('total');
+  total.textContent = slides.length;
+  let i = 0;
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    cur.textContent = i + 1;
+    if (location.hash !== '#' + (i + 1)) {
+      history.replaceState(null, '', '#' + (i + 1));
+    }
+  }
+
+  function next() { show(i + 1); }
+  function prev() { show(i - 1); }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { next(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { prev(); e.preventDefault(); }
+    else if (e.key === 'Home') { show(0); }
+    else if (e.key === 'End') { show(slides.length - 1); }
+  });
+
+  document.addEventListener('click', (e) => {
+    // ignore clicks on links / inputs if any
+    if (e.target.closest('a, input, button')) return;
+    next();
+  });
+
+  // Deep-link via hash (e.g. rules-slides.html#5)
+  const h = parseInt(location.hash.slice(1), 10);
+  show(Number.isFinite(h) && h >= 1 ? h - 1 : 0);
+</script>
+
+</body>
+</html>
