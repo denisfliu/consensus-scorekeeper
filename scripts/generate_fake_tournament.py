@@ -3,13 +3,10 @@ src/ui/roster-presets.js. Outputs one CSV per match into
 assets/tournament-results/, in the same multi-section format that exportCsv
 produces (so it round-trips through parseResultsCsv cleanly).
 
-Run with:
+Run from anywhere — paths resolve relative to this file, not the CWD:
 
-    & "C:\\Users\\denis\\miniforge3\\python.exe" generate_fake_tournament.py
-
-or, where python is on PATH:
-
-    python generate_fake_tournament.py
+    & "C:\\Users\\denis\\miniforge3\\python.exe" scripts\\generate_fake_tournament.py
+    python scripts/generate_fake_tournament.py
 
 The seed is fixed so re-running overwrites with identical content.
 """
@@ -20,7 +17,8 @@ import random
 from datetime import datetime, timedelta
 
 SEED = 42
-OUT_DIR = os.path.join("assets", "tournament-results")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT_DIR = os.path.join(REPO_ROOT, "assets", "tournament-results")
 PACKET_BASE = "2026 SCT Spring Pack"
 
 ROSTERS = [

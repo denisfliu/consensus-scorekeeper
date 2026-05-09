@@ -31,7 +31,7 @@ jobs:
           python-version: '3.x'
 
       - name: Regenerate manifest
-        run: python update_results_manifest.py
+        run: python scripts/update_results_manifest.py
 
       - name: Commit if changed
         run: |
