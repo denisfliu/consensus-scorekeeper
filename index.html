@@ -11,6 +11,11 @@
 
 <!-- ==================== SETUP SCREEN ==================== -->
 <div id="setup">
+  <button type="button" class="roster-mode-toggle" id="roster-mode-toggle"
+          data-action="toggle-roster-mode"
+          title="Switch between preset tournament rosters and free-text team names">
+    Roster: Tournament
+  </button>
   <h1>Consensus Scorekeeper</h1>
 
   <div class="setup-section">
@@ -38,24 +43,25 @@
     <h2>Team Rosters</h2>
     <div class="team-setup">
       <div class="team-box">
-        <label>Team A Name</label>
-        <input type="text" id="team-a-name" value="Team A" placeholder="Team name">
+        <label for="team-a-name">Team A</label>
+        <span class="team-name-slot" id="team-a-name-slot"></span>
         <div class="add-player-row">
-          <input type="text" id="add-player-a" placeholder="Player name">
+          <input type="text" id="add-player-a" placeholder="Player name" list="player-suggestions" autocomplete="off">
           <button class="btn btn-add" data-action="add-player" data-team="a">Add</button>
         </div>
         <ul class="roster-list" id="roster-a"></ul>
       </div>
       <div class="team-box">
-        <label>Team B Name</label>
-        <input type="text" id="team-b-name" value="Team B" placeholder="Team name">
+        <label for="team-b-name">Team B</label>
+        <span class="team-name-slot" id="team-b-name-slot"></span>
         <div class="add-player-row">
-          <input type="text" id="add-player-b" placeholder="Player name">
+          <input type="text" id="add-player-b" placeholder="Player name" list="player-suggestions" autocomplete="off">
           <button class="btn btn-add" data-action="add-player" data-team="b">Add</button>
         </div>
         <ul class="roster-list" id="roster-b"></ul>
       </div>
     </div>
+    <datalist id="player-suggestions"></datalist>
   </div>
 
   <button class="btn btn-start" id="start-btn" data-action="start-game">Start Game</button>

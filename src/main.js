@@ -26,7 +26,7 @@ import { rebuildJailbreakLocks } from './game/jailbreak.js';
 import { rebuildStreakGroups } from './game/streaks.js';
 import { getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize } from './game/categories.js';
 import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, loadPdfBytes, clearSavedState } from './game/persistence.js';
-import { addPlayer, removePlayer, renderRoster, setupSetupScreen } from './ui/setup.js';
+import { addPlayer, removePlayer, renderRoster, setupSetupScreen, setTeamNameField, toggleRosterMode } from './ui/setup.js';
 import { parsePdf, processZipBuffer, handleZipUpload } from './loader.js';
 import { readZip, looksLikePdfOrZip } from './parser/zip.js';
 import { extractRichLinesFromPdf } from './parser/pdf-text.js';
@@ -145,9 +145,11 @@ function loadState() {
     const pdfBytes = loadPdfBytes();
     if (pdfBytes) state.pdfBytes = pdfBytes;
 
-    // Restore setup UI fields regardless of game state.
-    document.getElementById('team-a-name').value = state.teamA.name || 'Team A';
-    document.getElementById('team-b-name').value = state.teamB.name || 'Team B';
+    // Restore setup UI fields regardless of game state. The team-name <select>
+    // is populated from preset rosters; setTeamSelectValue handles the case
+    // where a saved name doesn't match any preset (older saves, tutorial sandboxes).
+    setTeamNameField('a', state.teamA.name || 'Team A');
+    setTeamNameField('b', state.teamB.name || 'Team B');
     renderRoster('a');
     renderRoster('b');
     if (state.packName) {
@@ -179,6 +181,7 @@ const ACTION_HANDLERS = {
   'start-game': () => startGame(),
   'start-tutorial': () => startTutorialGame(),
   'clear-and-reload': () => clearAndReload(),
+  'toggle-roster-mode': () => toggleRosterMode(),
   'pdf-page-prev': () => pdfPagePrev(),
   'pdf-page-next': () => pdfPageNext(),
   'close-pdf-viewer': () => closePdfViewer(),
