@@ -1,0 +1,46 @@
+# Auto-regenerate assets/tournament-results/manifest.json whenever CSVs in
+# that folder change on main. The result is that the public stats page
+# (stats.html) sees newly-pushed games on its next load with no manual step
+# from the maintainer beyond "drop CSV in folder, push."
+#
+# The path filter excludes manifest.json itself so the bot's own commit
+# doesn't bounce the workflow. (GITHUB_TOKEN-driven pushes also don't
+# trigger workflows by default, but the explicit exclusion keeps the rule
+# legible and protects against future config changes.)
+
+name: Update tournament manifest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/tournament-results/**'
+      - '!assets/tournament-results/manifest.json'
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Regenerate manifest
+        run: python update_results_manifest.py
+
+      - name: Commit if changed
+        run: |
+          if [[ -n "$(git status --porcelain assets/tournament-results/manifest.json)" ]]; then
+            git config user.name  'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git add assets/tournament-results/manifest.json
+            git commit -m 'chore(stats): auto-regenerate tournament manifest'
+            git push
+          else
+            echo 'manifest already up to date'
+          fi

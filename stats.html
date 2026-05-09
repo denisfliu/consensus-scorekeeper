@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consensus Tournament Stats</title>
+<link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+
+<div id="stats-page">
+  <header class="stats-header">
+    <h1>Consensus Tournament Stats</h1>
+    <a class="stats-back-link" href="index.html">← Scorekeeper</a>
+  </header>
+
+  <section class="setup-section" id="tournament-stats-section">
+    <p class="ts-intro">
+      Published games load automatically. You can also add your own exported CSVs locally
+      to compare — they stay in your browser and don't affect what other visitors see.
+    </p>
+    <div class="ts-upload">
+      <label class="file-label" for="ts-file-input">Add CSV(s)</label>
+      <input type="file" id="ts-file-input" accept=".csv" multiple>
+      <button type="button" class="btn ts-clear-btn" data-action="ts-clear-uploaded"
+              title="Wipe only the CSVs you uploaded locally. Published games stay.">
+        Clear my uploads
+      </button>
+      <button type="button" class="btn ts-clear-btn" data-action="ts-clear-published"
+              title="Hide the published games until next reload (they refetch on reload).">
+        Clear published
+      </button>
+      <span class="ts-status" id="ts-status"></span>
+    </div>
+    <div id="ts-content"></div>
+  </section>
+</div>
+
+<script type="module" src="src/stats-main.js"></script>
+
+</body>
+</html>
