@@ -16,9 +16,15 @@ This script is here as a manual fallback for local development/testing
 (e.g. `python serve.py` against a local checkout, where the Action hasn't
 run yet):
 
-    & "C:\\Users\\denis\\miniforge3\\python.exe" update_results_manifest.py
-    python update_results_manifest.py
+    & "C:\\Users\\denis\\miniforge3\\python.exe" scripts\\update_results_manifest.py
+    python scripts/update_results_manifest.py
 """
+
+import os
+import sys
+
+# Allow imports from this directory regardless of CWD.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from generate_fake_tournament import write_manifest
 
