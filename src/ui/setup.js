@@ -159,9 +159,15 @@ function applyPreset(team, presetName) {
 
 function syncToggleLabel() {
   const btn = document.getElementById('roster-mode-toggle');
-  if (!btn) return;
-  btn.textContent = rosterMode === 'tournament' ? 'Roster: Tournament' : 'Roster: Custom';
-  btn.dataset.mode = rosterMode;
+  if (btn) {
+    btn.textContent = rosterMode === 'tournament' ? 'Roster: Tournament' : 'Roster: Custom';
+    btn.dataset.mode = rosterMode;
+  }
+  // Mirror onto #setup so CSS-only sections (e.g. #tournament-stats-section)
+  // can show/hide themselves based on mode without needing to coordinate
+  // with this module.
+  const setup = document.getElementById('setup');
+  if (setup) setup.dataset.rosterMode = rosterMode;
 }
 
 export function toggleRosterMode() {
