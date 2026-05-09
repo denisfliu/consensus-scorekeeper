@@ -11,7 +11,23 @@ body {
   max-width: 900px;
   margin: 0 auto;
   padding: 40px 20px;
+  position: relative;
 }
+.roster-mode-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #333;
+}
+.roster-mode-toggle:hover { background: #f0f0f0; border-color: #999; }
+.roster-mode-toggle[data-mode="custom"] { color: #6b46c1; border-color: #d3c7ee; }
 #setup h1 {
   text-align: center;
   font-size: 2.5rem;
@@ -40,7 +56,8 @@ body {
   padding: 16px;
 }
 .team-box label { display: block; font-weight: 600; margin-bottom: 8px; }
-.team-box input[type="text"] {
+.team-box input[type="text"],
+.team-box select {
   width: 100%;
   padding: 8px 12px;
   background: #fff;
@@ -50,7 +67,8 @@ body {
   font-size: 0.95rem;
   margin-bottom: 8px;
 }
-.team-box input[type="text"]:focus {
+.team-box input[type="text"]:focus,
+.team-box select:focus {
   outline: none;
   border-color: #666;
 }

@@ -9,7 +9,7 @@
 // once that overlay exists it will be triggered from here after startGame.
 
 import { state } from '../state.js';
-import { renderRoster } from './setup.js';
+import { renderRoster, setTeamNameField } from './setup.js';
 import { parsePdf } from '../loader.js';
 import { startGame } from './game.js';
 import { startTutorial } from './tutorial-overlay.js';
@@ -49,10 +49,13 @@ export async function startTutorialGame() {
   state.teamB.players = PRESET_ROSTERS.teamB.players.map((name) => ({ name, points: 0 }));
   state.teamB.score = 0;
 
-  // Reflect the new teams + roster in the setup-screen inputs (the game's
+  // Reflect the new teams + roster in the setup-screen field (the game's
   // header reads from state, but startGame() pulls team names from these).
-  document.getElementById('team-a-name').value = state.teamA.name;
-  document.getElementById('team-b-name').value = state.teamB.name;
+  // setTeamNameField is mode-aware: in tournament mode it injects a one-off
+  // <option> for "Quizmasters"/"Trivia Titans"; in custom mode it just
+  // writes to the <input>'s value.
+  setTeamNameField('a', state.teamA.name);
+  setTeamNameField('b', state.teamB.name);
   renderRoster('a');
   renderRoster('b');
 
