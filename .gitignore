@@ -2,7 +2,7 @@ commit.sh
 __pycache__/
 *.pyc
 .claude
-Cons*
+Cons*.zip
 features.md
 _console_inspect.js
 node_modules/
