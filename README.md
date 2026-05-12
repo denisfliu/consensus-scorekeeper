@@ -8,9 +8,11 @@ Scorekeeper and stats viewer for [Consensus](https://consensustrivia.com/) trivi
 
 The repo has four entry points.
 
-`index.html` is the scorekeeper. You upload a packet (or pick one from the in-app browser of consensustrivia.com), set up rosters, and run the game. Most of the live scoring is keyboard-driven. "Export CSV" at the end writes one row per player.
+`index.html` is the scorekeeper. You upload a packet (or pick one from the in-app browser of consensustrivia.com), set up rosters, and run the game. Most of the live scoring is keyboard-driven. "Export CSV" at the end writes one row per player. There's also a Pop Out button that opens a dark, presentation-style scoreboard in a separate window for projecting to players or spectators.
 
 ![Setup screen with "Tournament rosters" switched on. Team A has the Wookiee roster loaded; Team B's dropdown still says "Pick a team".](docs/screenshots/scorekeeper-setup.png)
+
+![Pop-out scoreboard window: dark background with both team names and large scores side-by-side, the current question number underneath, and the category line below that.](docs/screenshots/scorekeeper-popout.png)
 
 `tournaments/` is a hub page that lists every tournament hosted on the site, with a search box if the list grows.
 
