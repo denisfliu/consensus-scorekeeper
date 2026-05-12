@@ -175,6 +175,54 @@ export function applyCustomAward(team, playerIndex, points, questionIdx) {
   notify();
 }
 
+// Move a player from `fromIndex` to `toIndex` within `team`'s players array,
+// then remap every other piece of state that references players by index:
+// state.history entries (for this team), state.streakScoring[*][team], and
+// state.jailbreakLocked[team]. This is what makes drag-to-reorder safe
+// mid-game — points, streaks, and jailbreak locks stay attached to the right
+// player after the move. CSV export reads from teamObj.players in order, so
+// the exported row order reflects whatever the moderator left the roster in.
+export function reorderPlayer(team, fromIndex, toIndex) {
+  const teamObj = team === 'a' ? state.teamA : state.teamB;
+  const n = teamObj.players.length;
+  fromIndex = Math.max(0, Math.min(n - 1, fromIndex | 0));
+  toIndex = Math.max(0, Math.min(n - 1, toIndex | 0));
+  if (n < 2 || fromIndex === toIndex) return;
+
+  // Build oldIdx -> newIdx mapping based on splice-out then splice-in semantics.
+  const mapping = new Array(n);
+  for (let i = 0; i < n; i++) {
+    if (i === fromIndex) mapping[i] = toIndex;
+    else if (fromIndex < toIndex && i > fromIndex && i <= toIndex) mapping[i] = i - 1;
+    else if (fromIndex > toIndex && i >= toIndex && i < fromIndex) mapping[i] = i + 1;
+    else mapping[i] = i;
+  }
+
+  const [moved] = teamObj.players.splice(fromIndex, 1);
+  teamObj.players.splice(toIndex, 0, moved);
+
+  for (const h of state.history) {
+    if (h.team === team && typeof h.playerIndex === 'number') {
+      h.playerIndex = mapping[h.playerIndex];
+    }
+  }
+
+  if (state.streakScoring) {
+    for (const key of Object.keys(state.streakScoring)) {
+      const bucket = state.streakScoring[key];
+      if (bucket && bucket[team] && typeof bucket[team].playerIndex === 'number') {
+        bucket[team].playerIndex = mapping[bucket[team].playerIndex];
+      }
+    }
+  }
+
+  if (state.jailbreakLocked && Array.isArray(state.jailbreakLocked[team])) {
+    state.jailbreakLocked[team] = state.jailbreakLocked[team].map((i) => mapping[i]);
+  }
+
+  notify();
+}
+
 export function undoLast() {
   if (state.history.length === 0) return;
   const last = state.history.pop();

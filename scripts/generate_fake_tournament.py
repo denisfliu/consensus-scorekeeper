@@ -1,7 +1,7 @@
 """Generate a round-robin fake tournament for the eight preset rosters in
 src/ui/roster-presets.js. Outputs one CSV per match into
-assets/tournament-results/, in the same multi-section format that exportCsv
-produces (so it round-trips through parseResultsCsv cleanly).
+tournaments/<TOURNAMENT_SLUG>/results/, in the same multi-section format
+that exportCsv produces (so it round-trips through parseResultsCsv).
 
 Run from anywhere — paths resolve relative to this file, not the CWD:
 
@@ -14,11 +14,16 @@ The seed is fixed so re-running overwrites with identical content.
 import csv
 import os
 import random
+import sys
 from datetime import datetime, timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from update_manifests import write_manifest_for  # noqa: E402
 
 SEED = 42
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_DIR = os.path.join(REPO_ROOT, "assets", "tournament-results")
+TOURNAMENT_SLUG = "fake-round-robin-2026"
+OUT_DIR = os.path.join(REPO_ROOT, "tournaments", TOURNAMENT_SLUG, "results")
 PACKET_BASE = "2026 SCT Spring Pack"
 
 ROSTERS = [
@@ -159,19 +164,7 @@ def main():
         )
 
     print(f"Wrote {len(matches)} games to {OUT_DIR}/")
-    write_manifest()
-
-
-def write_manifest():
-    """Scan OUT_DIR for CSVs and (over)write manifest.json so the standalone
-    stats page knows what to fetch. Importable from update_results_manifest.py
-    so both scripts use identical logic."""
-    import json
-    csvs = sorted(f for f in os.listdir(OUT_DIR) if f.endswith(".csv"))
-    manifest_path = os.path.join(OUT_DIR, "manifest.json")
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump({"games": csvs}, f, indent=2)
-    print(f"Wrote manifest with {len(csvs)} game(s) to {manifest_path}")
+    write_manifest_for(OUT_DIR)
 
 
 if __name__ == "__main__":

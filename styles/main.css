@@ -13,21 +13,83 @@ body {
   padding: 40px 20px;
   position: relative;
 }
-.roster-mode-toggle {
+/* Roster-mode control: label + switch button sitting in the top-right of
+   the setup screen. Switch is an iOS-style pill — track + sliding thumb
+   — paired with an ON/OFF state label so the action is unmistakable. */
+.roster-mode-control {
   position: absolute;
   top: 16px;
   right: 16px;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.roster-mode-label {
   font-size: 0.85rem;
   font-weight: 600;
-  cursor: pointer;
   color: #333;
 }
-.roster-mode-toggle:hover { background: #f0f0f0; border-color: #999; }
-.roster-mode-toggle[data-mode="custom"] { color: #6b46c1; border-color: #d3c7ee; }
+.roster-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.roster-mode-switch:focus { outline: 2px solid #93c5fd; outline-offset: 2px; border-radius: 4px; }
+.roster-mode-switch-track {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+.roster-mode-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  transition: left 0.15s ease;
+}
+.roster-mode-switch-state {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  min-width: 26px;
+  text-align: left;
+}
+.roster-mode-switch[aria-pressed="true"] .roster-mode-switch-track { background: #2563eb; }
+.roster-mode-switch[aria-pressed="true"] .roster-mode-switch-thumb { left: 18px; }
+.roster-mode-switch[aria-pressed="true"] .roster-mode-switch-state { color: #2563eb; }
+.roster-mode-switch:hover .roster-mode-switch-track { filter: brightness(0.95); }
+
+/* Tournament picker — appears when "Custom rosters" is toggled off so the
+   moderator can choose which past tournament's rosters to load. */
+.roster-tournament-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.roster-tournament-picker[hidden] { display: none; }
+.roster-tournament-picker label { color: #555; font-weight: 600; }
+.roster-tournament-picker select {
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: #fff;
+}
 
 /* --- Standalone stats page (stats.html) --- */
 #stats-page {
@@ -52,23 +114,31 @@ body {
 
 /* --- Tournament stats panel --- */
 .ts-intro { color: #555; font-size: 0.9rem; margin-bottom: 12px; }
-.ts-upload {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
 .ts-status { font-size: 0.9rem; color: #555; }
 .ts-status-ok { color: #2c7a2c; }
 .ts-status-warn { color: #a06400; }
-.ts-clear-btn {
-  background: #fff;
-  color: #c00;
-  border: 1px solid #f0c0c0;
-}
-.ts-clear-btn:hover { background: #fdf0f0; }
 .ts-empty { color: #777; padding: 12px 0; font-style: italic; }
+.ts-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 12px;
+  color: #555;
+  font-style: italic;
+}
+.ts-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: ts-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ts-spin {
+  to { transform: rotate(360deg); }
+}
 .ts-summary {
   display: flex;
   flex-wrap: wrap;
@@ -203,13 +273,14 @@ body {
 }
 .roster-list li {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 4px 8px;
   background: #f5f5f5;
   border-radius: 4px;
   margin-bottom: 4px;
 }
+.roster-list li .roster-name { flex: 1; }
 .roster-list li button {
   background: none;
   border: none;
@@ -217,6 +288,28 @@ body {
   cursor: pointer;
   font-size: 1.1rem;
 }
+
+/* Drag-to-reorder visuals — shared by .roster-list li and .player-row.
+   The grip cursor advertises that the row is draggable; the source row dims
+   while a drag is in flight; .drag-target-before/after draw a 2px guideline
+   above/below the target row to show where the dropped item will land. */
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: #888;
+  font-size: 0.95rem;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.drag-handle:active { cursor: grabbing; }
+.roster-list li[draggable="true"],
+.player-row[draggable="true"] { cursor: grab; }
+.roster-list li.drag-source,
+.player-row.drag-source { opacity: 0.4; }
+.roster-list li.drag-target-before,
+.player-row.drag-target-before { box-shadow: 0 -2px 0 0 #2563eb inset, 0 -2px 0 0 #2563eb; }
+.roster-list li.drag-target-after,
+.player-row.drag-target-after { box-shadow: 0 2px 0 0 #2563eb inset, 0 2px 0 0 #2563eb; }
 .add-player-row {
   display: flex;
   gap: 8px;
@@ -961,3 +1054,43 @@ body {
 .tutorial-tooltip-nav .tutorial-next-btn:hover {
   background: #1d4fc4;
 }
+
+/* --- Tournaments hub (tournaments.html) ---
+   Card list of every tournament hosted on the site. The search box at the
+   top filters by name/slug/description. */
+.tournaments-search-row { margin-bottom: 16px; }
+#tournaments-search {
+  width: 100%;
+  max-width: 420px;
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+#tournaments-search:focus { outline: none; border-color: #2563eb; }
+.tournaments-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.tournament-card { padding: 0; }
+.tournament-card-link {
+  display: block;
+  padding: 14px 18px;
+  background: #f5f5f5;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #111;
+  transition: background 0.12s, border-color 0.12s;
+}
+.tournament-card-link:hover { background: #eef2ff; border-color: #c7d2fe; }
+.tournament-card-name {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+.tournament-card-desc {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: #555;
+}
+.tournaments-empty { color: #777; font-style: italic; padding: 12px 0; }

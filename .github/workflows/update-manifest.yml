@@ -1,24 +1,27 @@
-# Auto-regenerate assets/tournament-results/manifest.json whenever CSVs in
-# that folder change on main. The result is that the public stats page
-# (stats.html) sees newly-pushed games on its next load with no manual step
-# from the maintainer beyond "drop CSV in folder, push."
+# Auto-regenerate tournaments/<slug>/results/manifest.json whenever the
+# CSVs in any tournament folder change on main. Each per-tournament stats
+# page (tournaments/<slug>/index.html) fetches its own manifest, so the
+# maintainer's flow is just "drop CSV in folder, push." The folder layout
+# scales to multiple tournaments — adding tournaments/<new-slug>/results/
+# and pushing a CSV is enough; this workflow regenerates the new manifest
+# without any other edit.
 #
-# The path filter excludes manifest.json itself so the bot's own commit
-# doesn't bounce the workflow. (GITHUB_TOKEN-driven pushes also don't
-# trigger workflows by default, but the explicit exclusion keeps the rule
-# legible and protects against future config changes.)
+# Path filter excludes the manifest files themselves so the bot's own
+# commit doesn't bounce the workflow. (GITHUB_TOKEN-driven pushes also
+# don't trigger workflows by default, but the explicit exclusion keeps
+# the rule legible.)
 
-name: Update tournament manifest
+name: Update tournament manifests
 
 on:
   push:
     branches: [main]
     paths:
-      - 'assets/tournament-results/**'
-      - '!assets/tournament-results/manifest.json'
+      - 'tournaments/*/results/**'
+      - '!tournaments/*/results/manifest.json'
 
 jobs:
-  manifest:
+  manifests:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,17 +33,17 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Regenerate manifest
-        run: python scripts/update_results_manifest.py
+      - name: Regenerate every tournament manifest
+        run: python scripts/update_manifests.py
 
       - name: Commit if changed
         run: |
-          if [[ -n "$(git status --porcelain assets/tournament-results/manifest.json)" ]]; then
+          if [[ -n "$(git status --porcelain tournaments)" ]]; then
             git config user.name  'github-actions[bot]'
             git config user.email 'github-actions[bot]@users.noreply.github.com'
-            git add assets/tournament-results/manifest.json
-            git commit -m 'chore(stats): auto-regenerate tournament manifest'
+            git add tournaments
+            git commit -m 'chore(stats): auto-regenerate tournament manifests'
             git push
           else
-            echo 'manifest already up to date'
+            echo 'manifests already up to date'
           fi

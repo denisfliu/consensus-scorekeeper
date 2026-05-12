@@ -2,31 +2,54 @@
 
 Notes for Claude Code working in this repo.
 
-## Two pages, one shared library
+## Pages, one shared library
 
-There are **two** static HTML entry points:
+Two root pages and one folder-per-tournament under `tournaments/`. All
+share `styles/main.css` and the contents of `src/`:
 
 - `index.html` → the live scorekeeper. Boots the scoring UI, parses the
   PDF, drives all the in-game features.
-- `stats.html` → the public-facing tournament stats viewer. Loads exported
-  CSVs (auto-fetched from `assets/tournament-results/` + optional local
-  uploads), renders standings / leaderboards / per-game / per-player
-  drill-downs.
+- `stats.html` → legacy redirect notice. Old bookmarks land here and
+  meta-refresh to `tournaments/` after a few seconds.
+- `tournaments/index.html` → the **public stats hub**. Lists every
+  tournament in `TOURNAMENTS` (see `src/ui/roster-presets.js`) as a
+  clickable card, with a search filter. New tournaments show up here
+  by appending to the registry.
+- `tournaments/<slug>/index.html` → per-tournament stats viewer. Loads
+  CSVs from `tournaments/<slug>/results/` via that folder's
+  `manifest.json`. Title + heading are stamped by `stats-main.js` from
+  the matching `TOURNAMENTS` entry (looked up by the `<meta
+  name="tournament-slug">` tag in the page).
+- `tournaments/<slug>/rules-slides.html` → optional per-tournament rules
+  briefing (a self-contained slide deck).
 
-They share `styles/main.css` and the contents of `src/`. Each has its own
-entry-point JS (`src/main.js` for the scorekeeper, `src/stats-main.js` for
-stats). There is no bundler — `serve.py` (or any static server) serves the
-files directly.
+Each page has its own entry-point JS:
+- `src/main.js` — scorekeeper
+- `src/stats-main.js` — per-tournament stats viewer
+- `src/tournaments-main.js` — hub list + search filter
+
+There is no bundler — `serve.py` (or any static server) serves the files
+directly.
 
 ## Project shape
 
 ```
-index.html              ← scorekeeper shell
-stats.html              ← standalone tournament stats page
-styles/main.css         ← the app's stylesheet (shared by both pages)
+index.html                                       ← scorekeeper shell
+stats.html                                       ← legacy redirect → tournaments/
+styles/main.css                                  ← shared stylesheet
+tournaments/
+  index.html                                     ← stats hub (lists every tournament)
+  <slug>/
+    index.html                                   ← per-tournament stats page
+    rules-slides.html                            ← per-tournament rules briefing (optional)
+    results/
+      manifest.json                              ← auto-regenerated on push
+      *.csv                                      ← exported games (drop CSVs here)
 src/
   main.js               ← scorekeeper entry: imports modules, wires DOM, loadState()
-  stats-main.js         ← stats.html entry: setupTournamentStats({ manifestUrl })
+  stats-main.js         ← per-tournament-stats-page entry: reads slug from <meta>,
+                          stamps title from TOURNAMENTS[slug], loads results/manifest.json
+  tournaments-main.js   ← tournaments/index.html entry: hub list + search filter
   state.js              ← state singleton + reducers + subscribe()
   loader.js             ← parsePdf / processZipBuffer / handleZipUpload orchestrators
   parser/
@@ -39,8 +62,11 @@ src/
     categories.js       ← getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize
     persistence.js      ← saveState, loadPdfBytes, savePdfBytes, clearSavedState, isGameVisible
   ui/
-    setup.js            ← roster CRUD + roster-mode toggle (tournament/custom)
-    roster-presets.js   ← ROSTER_PRESETS + PLAYER_SUGGESTIONS for tournament-mode dropdowns
+    setup.js            ← roster CRUD + Tournament-rosters on/off toggle + tournament picker
+    roster-presets.js   ← TOURNAMENTS registry (slug + rosters + description; no statsPage —
+                          link is derived from slug). + DEFAULT_TOURNAMENT
+                          + PLAYER_SUGGESTIONS + getTournamentBySlug
+    drag-reorder.js     ← attachDragReorder: HTML5 drag handler for roster lists / panels
     game.js             ← renderGame (single state subscriber), renderQuestion, etc.
     pdf-viewer.js       ← inline + fullscreen pdf.js viewer
     scoreboard-popout.js ← BroadcastChannel + popout HTML template
@@ -50,7 +76,7 @@ src/
     dev-tools.js        ← reparseCurrentPdf, applyCustomAward, populateCustomAward
     tutorial.js         ← startTutorialGame: boots a sandbox session w/ preset rosters + pack
     tutorial-overlay.js ← 13-step coach-marks overlay engine (multi-target highlight)
-    tournament-stats.js ← setupTournamentStats: upload + manifest fetch + view router
+    tournament-stats.js ← setupTournamentStats: manifest fetch + view router
   util/
     escape.js           ← escapeHtml, csvEscape
     csv.js              ← buildResultsCsv, buildResultsFilename (used by exportCsv)
@@ -58,14 +84,13 @@ src/
     tournament-aggregate.js ← aggregateTournament + gamesForTeam + gamesForPlayer
 assets/
   tutorial-pack.pdf     ← bundled pack the tutorial sandbox loads
-  tournament-results/   ← published CSVs + manifest.json (fetched by stats.html)
 scripts/                ← Python helpers; run from anywhere (paths use __file__)
   serve.py is at root   ← local dev server (port 8000); also /proxy/ for consensustrivia.com
   scrape_packs.py       ← regenerates ui/pack-browser.js's PACK_CATALOG
-  generate_fake_tournament.py  ← writes 28-game round-robin into assets/tournament-results/
-  update_results_manifest.py   ← rewrites assets/tournament-results/manifest.json
+  generate_fake_tournament.py  ← writes a round-robin into tournaments/<slug>/results/
+  update_manifests.py          ← rewrites manifest.json in every tournaments/*/results/ folder
 .github/workflows/
-  update-manifest.yml   ← auto-regenerates manifest.json on push (see below)
+  update-manifest.yml   ← auto-regenerates manifests on push (see below)
 tests/                  ← vitest tests; run with `npm test`
 ```
 
@@ -87,27 +112,34 @@ tests/                  ← vitest tests; run with `npm test`
   tournament-aggregate, csv, escape) is DOM-free.
 - **Persistence keys are namespaced and versioned.** Each subsystem owns
   its own localStorage key:
-  - `consensus-state-v1`            — saved scorekeeper game (game/persistence.js)
-  - `consensus-stats-pdf-v1`        — saved PDF bytes (game/persistence.js)
-  - `consensus-roster-mode-v1`      — tournament/custom toggle (ui/setup.js)
-  - `consensus-tournament-games-v1` — uploaded + cached manifest games (ui/tournament-stats.js)
-- **Two pages share modules**, so anything imported by `stats-main.js`
-  must not assume scorekeeper-only DOM exists. tournament-stats.js, the
-  util modules, and roster-presets.js are page-agnostic; everything else
-  in `ui/` (setup.js, game.js, pdf-viewer.js, etc.) is index.html-only.
+  - `consensus-state-v1`             — saved scorekeeper game (game/persistence.js)
+  - `consensus-stats-pdf-v1`         — saved PDF bytes (game/persistence.js)
+  - `consensus-roster-mode-v1`       — 'custom' (default) or 'preset'; legacy 'tournament' is migrated to 'preset' on read (ui/setup.js)
+  - `consensus-tournament-slug-v1`   — which TOURNAMENTS entry drives the preset team-name dropdown (ui/setup.js)
+- **Multiple pages share modules**, so anything imported by `stats-main.js`
+  or `tournaments-main.js` must not assume scorekeeper-only DOM exists.
+  `tournament-stats.js`, the util modules, and `roster-presets.js` are
+  page-agnostic; everything else in `ui/` (setup.js, game.js, pdf-viewer.js,
+  etc.) is index.html-only.
 
 ## Roster mode toggle
 
-The setup screen has a top-right toggle that flips between two modes:
+The setup screen has a top-right toggle labeled **"Tournament rosters"**
+with a pill switch that reads ON or OFF, plus a tournament-picker
+dropdown that appears alongside ON:
 
-- **Tournament** (default) — team-name field is a `<select>` populated
-  from `ROSTER_PRESETS` (see `src/ui/roster-presets.js`). Picking a team
-  auto-fills the player list. Adding a player offers an autocomplete
-  `<datalist>` of all known names (including ones intentionally absent
-  from default rosters, e.g. last-minute subs whose names are easy to
-  misspell).
-- **Custom** — original behavior: a free-text `<input>` for the team
-  name; rosters built manually.
+- **Tournament rosters: OFF** (default) — team-name field is a free-text
+  `<input>`. Rosters are built manually. The tournament picker is hidden.
+- **Tournament rosters: ON** — team-name field is a `<select>` populated
+  from the chosen tournament's `rosters`. The picker (`Rosters from
+  <select>`) lists every entry in `TOURNAMENTS`; changing it clears the
+  current teams and repopulates the dropdowns from the newly chosen
+  tournament. Adding a player still offers an autocomplete `<datalist>`
+  of every name across every tournament.
+
+Internally the modes are named `custom` and `preset`. The legacy
+`'tournament'` value is migrated to `'preset'` on read for users on older
+localStorage state.
 
 Mode is mirrored onto `#setup` as `data-roster-mode="…"` so CSS-only
 sections can show/hide themselves without JS coordination.
@@ -115,6 +147,29 @@ sections can show/hide themselves without JS coordination.
 `setTeamNameField(team, name)` is the mode-aware setter that
 `loadState`, `tutorial.js`, and the toggle itself use to display a name
 in whichever element is currently mounted.
+
+## Adding a new tournament
+
+The site hosts one folder per tournament under `tournaments/`. To add
+one:
+
+1. Append a new entry to `TOURNAMENTS` in `src/ui/roster-presets.js`:
+   `{ name, slug, description, rosters: [{name, players}, ...] }`. The
+   slug doubles as the URL path under `tournaments/<slug>/`.
+2. Create `tournaments/<slug>/index.html` as a copy of
+   `tournaments/stanford-consensus-2026/index.html`, updating the single
+   `<meta name="tournament-slug" content="...">` to the new slug. The
+   page is otherwise generic — `stats-main.js` looks up the matching
+   TOURNAMENTS entry and stamps title + heading.
+3. Drop the tournament's CSVs into `tournaments/<slug>/results/`. The
+   auto-manifest workflow regenerates `manifest.json` on push.
+4. Optionally add `tournaments/<slug>/rules-slides.html` if the
+   tournament has a rules briefing — the per-tournament page links to it
+   automatically if present.
+
+The hub (`tournaments/index.html`) auto-discovers the new entry — it
+renders one card per TOURNAMENTS entry with the link derived from
+`<slug>/`.
 
 ## Tutorial
 
@@ -133,19 +188,19 @@ either a CSS selector string or an array — first match gets the dim
 spotlight, the rest get an outline only). Step 10 uses this to highlight
 ±Points + the inline PDF + the Hide-PDF toggle simultaneously.
 
-## Tournament stats (stats.html)
+## Tournament stats (per-tournament pages)
 
-The standalone stats page ingests CSVs from two sources:
+Each per-tournament HTML at `tournaments/<slug>/index.html` is a generic
+shell that loads `src/stats-main.js`. The shell loads CSVs exclusively
+from the tournament's own manifest:
 
-- **Manifest auto-load** — `assets/tournament-results/manifest.json`
-  (shape `{"games": [...]}`) is fetched on every page load. Listed CSVs
-  are tagged `source: 'manifest'` and refreshed on each load (so a new
-  push reflects on the next visit).
-- **Manual upload** — `<input type="file" multiple>`. Tagged
-  `source: 'upload'`, persisted to localStorage, never sent anywhere.
+- **Manifest auto-load** — `tournaments/<slug>/results/manifest.json`
+  (shape `{"games": [...]}`) is fetched on every page load. Each entry
+  is a filename inside the same directory.
 
-The two sets coexist; "Clear my uploads" / "Clear published" act on each
-independently.
+User-uploaded CSVs are intentionally not supported on the public page —
+the published data is the only source. Manifest regeneration is owned by
+the GitHub workflow described below.
 
 Views (state machine in `tournament-stats.js`):
 
@@ -162,22 +217,26 @@ Pure logic for these lives in `src/util/tournament-aggregate.js`
 
 ### Auto-manifest workflow
 
-`stats.html` loads `assets/tournament-results/manifest.json` to know
-which CSVs to fetch. **You don't write the manifest by hand.** The
-`.github/workflows/update-manifest.yml` Action regenerates it on every
-push that touches the folder, so the maintainer's flow is:
+Every per-tournament stats page loads its own
+`tournaments/<slug>/results/manifest.json` to know which CSVs to fetch.
+**You don't write any manifest by hand.** The
+`.github/workflows/update-manifest.yml` Action regenerates every
+affected manifest on every push that touches `tournaments/*/results/`,
+so the maintainer's flow is:
 
-1. Drop CSV(s) into `assets/tournament-results/`
+1. Drop CSV(s) into `tournaments/<slug>/results/`
 2. `git add` + commit + push
 
-The Action runs `python scripts/update_results_manifest.py` and commits
-the result if it changed (skip-otherwise so it doesn't bounce on its
-own commits — also guarded by a path filter that excludes manifest.json).
+The Action runs `python scripts/update_manifests.py`, which walks every
+`tournaments/*/results/` folder and rewrites its `manifest.json` if the
+contents drifted. The path filter excludes the manifest files themselves
+so the bot's own commit doesn't bounce the workflow.
 
-`scripts/update_results_manifest.py` is a manual fallback for local dev
+`scripts/update_manifests.py` is also a manual fallback for local dev
 (when running `python serve.py` against an unpushed checkout).
-`scripts/generate_fake_tournament.py` re-rolls the demo data and writes
-the manifest at the end.
+`scripts/generate_fake_tournament.py` re-rolls the demo data into
+`tournaments/fake-round-robin-2026/results/` and writes that folder's
+manifest at the end.
 
 ## Tests
 

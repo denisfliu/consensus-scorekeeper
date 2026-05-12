@@ -20,6 +20,7 @@ import {
   clearCurrentQuestion,
   resetStreak,
   applyCustomAward as applyCustomAwardReducer,
+  reorderPlayer,
   undoLast,
 } from './state.js';
 import { rebuildJailbreakLocks } from './game/jailbreak.js';
@@ -241,6 +242,7 @@ export {
   clearCurrentQuestion,
   resetStreak,
   applyCustomAward,
+  reorderPlayer,
   // persistence
   saveState,
   loadState,

@@ -11,15 +11,28 @@
 
 <!-- ==================== SETUP SCREEN ==================== -->
 <div id="setup">
-  <button type="button" class="roster-mode-toggle" id="roster-mode-toggle"
-          data-action="toggle-roster-mode"
-          title="Switch between preset tournament rosters and free-text team names">
-    Roster: Tournament
-  </button>
+  <!-- Roster-mode control. OFF (default) = free-text team names. ON =
+       preset rosters; a tournament dropdown appears and the team-name
+       fields become <select>s populated from that tournament's rosters.
+       setup.js fills the dropdown from TOURNAMENTS. -->
+  <div class="roster-mode-control">
+    <span class="roster-mode-label" id="roster-mode-label">Tournament rosters</span>
+    <button type="button" class="roster-mode-switch" id="roster-mode-toggle"
+            data-action="toggle-roster-mode"
+            aria-pressed="false"
+            title="Turn on to load a tournament's preset rosters">
+      <span class="roster-mode-switch-track"><span class="roster-mode-switch-thumb"></span></span>
+      <span class="roster-mode-switch-state" id="roster-mode-switch-state">OFF</span>
+    </button>
+    <span class="roster-tournament-picker" id="roster-tournament-picker" hidden>
+      <label for="roster-tournament-select">Rosters from</label>
+      <select id="roster-tournament-select"></select>
+    </span>
+  </div>
   <h1>Consensus Scorekeeper</h1>
 
   <div class="setup-section">
-    <h2>Upload Packet (Optional)</h2>
+    <h2>Upload Packet</h2>
     <div class="pdf-upload">
       <label class="file-label" for="pdf-input">Choose PDF</label>
       <input type="file" id="pdf-input" accept=".pdf,.zip">
@@ -67,7 +80,7 @@
   <button class="btn btn-start" id="start-btn" data-action="start-game">Start Game</button>
   <div style="text-align:center; margin-top: 12px;">
     <button type="button" class="browse-toggle" data-action="start-tutorial" title="Boot a sandbox game with preset rosters and a sample pack so you can try the controls">Tutorial</button>
-    <a class="browse-toggle stats-link" href="stats.html" title="View tournament-wide standings, leaderboards, and per-game stats">Tournament Stats →</a>
+    <a class="browse-toggle stats-link" href="tournaments/" title="Browse stats for every tournament hosted on this site">Tournament Stats →</a>
     <button type="button" class="browse-toggle" data-action="clear-and-reload">Clear saved game</button>
   </div>
 </div>

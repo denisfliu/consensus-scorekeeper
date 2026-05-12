@@ -1,8 +1,11 @@
 // Global keyboard shortcuts (active only when the game screen is visible
 // and no input/textarea/select has focus).
 //
-// - Number keys (1-9, 0): assign points to that player. 0 also acts as
-//   "skip to next question" when no player is in slot 9.
+// - Number keys: 1-4 = Team A players (indices 0-3), 5-9 = Team B players
+//   (indices 0-4). Team B always starts at 5 regardless of how many players
+//   Team A has, so the slot a player occupies on a key never shifts when
+//   the moderator adds/removes a teammate.
+// - 0 (no shift) = next question. Shift+0 = Team B's 6th player (index 5).
 // - Arrow Left / Right: prev / next question.
 // - Ctrl+Z: undo last scoring action.
 // - C: clear the current question's points.
@@ -43,26 +46,27 @@ export function setupKeybinds({ nextQuestion, prevQuestion }) {
     }
 
     if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-      const allPlayers = [...state.teamA.players, ...state.teamB.players];
       const keyNum = parseInt(e.key, 10);
+      // 0 (no shift) = next question. Shift+0 reaches Team B's 6th player.
       if (keyNum === 0 && !e.shiftKey) {
         e.preventDefault();
         nextQuestion();
         return;
       }
-      const playerIdx = keyNum === 0 ? 9 : keyNum - 1;
-      if (window.DEBUG_KEYS) console.log('[keydown] playerIdx=', playerIdx, 'allPlayers=', allPlayers.length);
-      if (playerIdx < allPlayers.length) {
+      // Team A: keys 1-4 → indices 0-3. Team B: keys 5-9 → indices 0-4; key 0 → index 5.
+      let team, playerIdx;
+      if (keyNum === 0)      { team = 'b'; playerIdx = 5; }
+      else if (keyNum <= 4)  { team = 'a'; playerIdx = keyNum - 1; }
+      else                   { team = 'b'; playerIdx = keyNum - 5; }
+      const teamPlayers = team === 'a' ? state.teamA.players : state.teamB.players;
+      if (window.DEBUG_KEYS) console.log('[keydown] team=', team, 'playerIdx=', playerIdx, 'teamPlayers=', teamPlayers.length);
+      if (playerIdx < teamPlayers.length) {
         e.preventDefault();
         const currentQ = state.questions[state.currentQuestion];
         // Streaks: only +5. Non-streaks: only +10. Shift modifier no longer toggles.
         const points = (currentQ && currentQ.isStreak) ? 5 : 10;
-        if (window.DEBUG_KEYS) console.log('[keydown] addPoints', { team: playerIdx < state.teamA.players.length ? 'a' : 'b', playerIdx, points, currentQ: currentQ ? { num: currentQ.num, isStreak: currentQ.isStreak, isMissing: currentQ.isMissing } : null });
-        if (playerIdx < state.teamA.players.length) {
-          addPoints('a', playerIdx, points);
-        } else {
-          addPoints('b', playerIdx - state.teamA.players.length, points);
-        }
+        if (window.DEBUG_KEYS) console.log('[keydown] addPoints', { team, playerIdx, points, currentQ: currentQ ? { num: currentQ.num, isStreak: currentQ.isStreak, isMissing: currentQ.isMissing } : null });
+        addPoints(team, playerIdx, points);
       }
     }
   });

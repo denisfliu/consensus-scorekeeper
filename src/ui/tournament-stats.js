@@ -1,20 +1,16 @@
-// Tournament Stats viewer. Powers stats.html (the standalone, public-facing
-// page). The DOM contract is:
-//   - <input type="file" id="ts-file-input" multiple accept=".csv">
-//   - <button data-action="ts-clear">
-//   - <span id="ts-status">
-//   - <div id="ts-content">              ← rendered into
+// Tournament Stats viewer. Powers the per-tournament stats page (e.g.
+// tournaments/stanford-consensus-2026/index.html). The DOM contract is:
+//   - <span id="ts-status">                  ← optional load status line
+//   - <div id="ts-content">                  ← rendered into
 //   - everything wrapped in #tournament-stats-section so the delegated
 //     click handler has a stable parent
 //
-// Sources of CSVs:
-//   - **Manual upload** via the file input. Persisted to localStorage so
-//     reloads don't lose them. Tagged source: 'upload'.
-//   - **Manifest auto-load** from a JSON file (used by the public page) —
-//     fetched on every init, replaces any prior `source: 'manifest'` games
-//     so a redeploy reflects new pushes. Manifest shape: `{ "games": [...] }`.
+// CSVs are loaded exclusively from the manifest passed in via
+// setupTournamentStats({ manifestUrl }). User-uploaded CSVs are no longer
+// supported on the public page — published data is the only source.
+// Manifest shape: { "games": [filename, ...] } (or a bare array).
 //
-// Views (state.view):
+// Views (tsState.view):
 //   - 'standings' — team table + individual leaderboard + summary
 //   - 'team'      — one team's record + all their games
 //   - 'player'    — one player's per-game points across all their games
@@ -24,34 +20,14 @@ import { parseResultsCsv } from '../util/parse-results-csv.js';
 import { aggregateTournament, gamesForTeam, gamesForPlayer } from '../util/tournament-aggregate.js';
 import { escapeHtml } from '../util/escape.js';
 
-const TS_STORAGE_KEY = 'consensus-tournament-games-v1';
-
 const tsState = {
-  games: [],                      // [{ id, source, packet, teamA, teamB, scoreA, scoreB, winner, exportedAt, players }]
+  games: [],                      // [{ id, packet, teamA, teamB, scoreA, scoreB, winner, exportedAt, players }]
   view: 'standings',              // 'standings' | 'team' | 'player' | 'game'
   selectedTeam: null,             // team name (string) when view === 'team' | 'player'
   selectedPlayer: null,           // player name (string) when view === 'player'
   selectedGameId: null,           // game id (string) when view === 'game'
+  loading: false,                 // true while loadFromManifest is in flight
 };
-
-function loadPersisted() {
-  try {
-    const raw = localStorage.getItem(TS_STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) tsState.games = parsed;
-  } catch (e) {
-    console.warn('[tournament-stats] failed to load persisted games:', e);
-  }
-}
-
-function persist() {
-  try {
-    localStorage.setItem(TS_STORAGE_KEY, JSON.stringify(tsState.games));
-  } catch (e) {
-    console.warn('[tournament-stats] failed to persist games:', e);
-  }
-}
 
 function setStatus(msg, kind) {
   const el = document.getElementById('ts-status');
@@ -66,35 +42,13 @@ function upsertGame(game) {
   else tsState.games.push(game);
 }
 
-async function handleUpload(fileList) {
-  const files = Array.from(fileList || []);
-  if (!files.length) return;
-  let added = 0, skipped = 0;
-  for (const file of files) {
-    try {
-      const text = await file.text();
-      const parsed = parseResultsCsv(text);
-      if (!parsed.teamA || !parsed.teamB) { skipped++; continue; }
-      // Re-uploading the same filename replaces (so users can fix a typo
-      // and reupload without doubling the game).
-      upsertGame({ id: `upload:${file.name}`, source: 'upload', ...parsed });
-      added++;
-    } catch (e) {
-      console.warn('[tournament-stats] parse failed for', file.name, e);
-      skipped++;
-    }
-  }
-  persist();
-  setStatus(
-    `Loaded ${added} game${added === 1 ? '' : 's'}` + (skipped ? ` (${skipped} skipped)` : '') + `. ${tsState.games.length} total.`,
-    skipped ? 'warn' : 'ok',
-  );
-  render();
-}
-
-// Fetch the manifest, then each listed CSV. Replaces any prior
-// `source: 'manifest'` games so a redeploy reflects the latest set.
-// Tolerates missing manifest / missing files — manual uploads still work.
+// Fetch the manifest, then each listed CSV. Each refresh replaces the
+// full game list so a redeploy reflects the latest set. Tolerates missing
+// manifest / missing files; the page just renders empty.
+//
+// The `finally` clause clears the loading flag and re-renders unconditionally
+// so the spinner doesn't get stuck on the screen if the fetch fails, the
+// manifest is empty, or every CSV inside is malformed.
 async function loadFromManifest(manifestUrl) {
   try {
     const resp = await fetch(manifestUrl, { cache: 'no-cache' });
@@ -107,59 +61,51 @@ async function loadFromManifest(manifestUrl) {
     const baseUrl = new URL(manifestUrl, document.baseURI);
     const baseDir = baseUrl.href.replace(/[^/]+$/, '');
 
-    // Drop prior manifest games before adding the fresh set.
-    tsState.games = tsState.games.filter((g) => g.source !== 'manifest');
+    // Parallel CSV fetches — large tournaments have 50+ games, and waiting
+    // for each fetch in series turns load time into 50× round-trip time.
+    // Default cache policy is fine for the CSV bodies: filenames are
+    // content-addressed (they include the export timestamp), so the browser
+    // can cache them indefinitely — only the manifest itself is mutable and
+    // keeps its `cache: 'no-cache'` above.
+    const filenames = list
+      .map((e) => (typeof e === 'string' ? e : e.filename))
+      .filter(Boolean);
 
-    let added = 0, failed = 0;
-    for (const entry of list) {
-      const filename = typeof entry === 'string' ? entry : entry.filename;
-      if (!filename) continue;
+    const results = await Promise.all(filenames.map(async (filename) => {
       try {
-        const csvResp = await fetch(baseDir + encodeURIComponent(filename), { cache: 'no-cache' });
-        if (!csvResp.ok) { failed++; continue; }
+        const csvResp = await fetch(baseDir + encodeURIComponent(filename));
+        if (!csvResp.ok) return { ok: false, filename };
         const text = await csvResp.text();
         const parsed = parseResultsCsv(text);
-        if (!parsed.teamA || !parsed.teamB) { failed++; continue; }
-        upsertGame({ id: `manifest:${filename}`, source: 'manifest', ...parsed });
-        added++;
+        if (!parsed.teamA || !parsed.teamB) return { ok: false, filename };
+        return { ok: true, filename, parsed };
       } catch {
+        return { ok: false, filename };
+      }
+    }));
+
+    tsState.games = [];
+    let added = 0, failed = 0;
+    for (const r of results) {
+      if (r.ok) {
+        upsertGame({ id: r.filename, ...r.parsed });
+        added++;
+      } else {
         failed++;
       }
     }
-    persist();
     if (added) {
-      const uploads = tsState.games.filter((g) => g.source === 'upload').length;
       setStatus(
-        `Loaded ${added} published game${added === 1 ? '' : 's'}` + (uploads ? ` + ${uploads} uploaded` : '') + (failed ? ` (${failed} failed)` : '') + '.',
+        `Loaded ${added} game${added === 1 ? '' : 's'}` + (failed ? ` (${failed} failed)` : '') + '.',
         failed ? 'warn' : 'ok',
       );
     }
-    render();
   } catch (e) {
     console.warn('[tournament-stats] failed to load manifest:', e);
+  } finally {
+    tsState.loading = false;
+    render();
   }
-}
-
-function clearUploaded() {
-  const count = tsState.games.filter((g) => g.source === 'upload').length;
-  if (!count) { setStatus('No uploaded games to clear.', 'warn'); return; }
-  if (!confirm(`Clear ${count} uploaded game${count === 1 ? '' : 's'}? Published games stay.`)) return;
-  tsState.games = tsState.games.filter((g) => g.source !== 'upload');
-  resetView();
-  persist();
-  setStatus(`Cleared ${count} uploaded game${count === 1 ? '' : 's'}.`, 'ok');
-  render();
-}
-
-function clearPublished() {
-  const count = tsState.games.filter((g) => g.source === 'manifest').length;
-  if (!count) { setStatus('No published games to clear.', 'warn'); return; }
-  if (!confirm(`Clear ${count} published game${count === 1 ? '' : 's'} from the local view? They'll reappear on the next page load.`)) return;
-  tsState.games = tsState.games.filter((g) => g.source !== 'manifest');
-  resetView();
-  persist();
-  setStatus(`Cleared ${count} published game${count === 1 ? '' : 's'} (will refetch on reload).`, 'ok');
-  render();
 }
 
 function resetView() {
@@ -402,8 +348,12 @@ function renderGameView() {
 function render() {
   const content = document.getElementById('ts-content');
   if (!content) return;
+  if (tsState.loading) {
+    content.innerHTML = `<div class="ts-loading"><span class="ts-spinner" aria-hidden="true"></span> Loading games…</div>`;
+    return;
+  }
   if (!tsState.games.length) {
-    content.innerHTML = `<div class="ts-empty">No games loaded yet. Upload CSVs above to get started.</div>`;
+    content.innerHTML = `<div class="ts-empty">No games published yet.</div>`;
     return;
   }
   const agg = aggregateTournament(tsState.games);
@@ -414,36 +364,25 @@ function render() {
 }
 
 export function setupTournamentStats({ manifestUrl } = {}) {
-  loadPersisted();
-
-  const input = document.getElementById('ts-file-input');
-  if (input) {
-    input.addEventListener('change', async (e) => {
-      await handleUpload(e.target.files);
-      e.target.value = '';
-    });
-  }
-  // Delegated click handler for everything inside the section, so it
-  // survives re-renders of #ts-content.
+  // Delegated click handler for the in-page navigation (drill into team /
+  // player / game views). Bound to a stable section parent so it survives
+  // re-renders of #ts-content.
   const section = document.getElementById('tournament-stats-section');
   if (section) {
     section.addEventListener('click', (e) => {
       const target = e.target.closest('[data-action]');
       if (!target) return;
       const action = target.dataset.action;
-      if (action === 'ts-clear-uploaded')      clearUploaded();
-      else if (action === 'ts-clear-published') clearPublished();
-      else if (action === 'ts-show-standings') showStandings();
+      if      (action === 'ts-show-standings') showStandings();
       else if (action === 'ts-show-team')      showTeam(target.dataset.team);
       else if (action === 'ts-show-player')    showPlayer(target.dataset.team, target.dataset.player);
       else if (action === 'ts-show-game')      showGame(target.dataset.gameId);
     });
   }
+  // If a manifest is configured, paint the loading state BEFORE the fetch
+  // kicks off so the user never sees the "no games published" flash.
+  if (manifestUrl) tsState.loading = true;
   render();
-
-  // Manifest fetch runs async — render() above shows whatever we restored
-  // from localStorage immediately, then the manifest update re-renders
-  // when the network responds.
   if (manifestUrl) loadFromManifest(manifestUrl);
 }
 

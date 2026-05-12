@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tournament Stats</title>
+<link rel="stylesheet" href="../styles/main.css">
+</head>
+<body>
+
+<div id="stats-page">
+  <header class="stats-header">
+    <h1>Tournament Stats</h1>
+    <a class="stats-back-link" href="../index.html">← Scorekeeper</a>
+  </header>
+
+  <section class="setup-section" id="tournaments-hub-section">
+    <p class="ts-intro">
+      Pick a tournament to see its standings, leaderboards, and per-game breakdowns.
+    </p>
+    <div class="tournaments-search-row">
+      <input type="search" id="tournaments-search" placeholder="Search tournaments…" autocomplete="off">
+    </div>
+    <ul class="tournaments-list" id="tournaments-list"></ul>
+  </section>
+</div>
+
+<script type="module" src="../src/tournaments-main.js"></script>
+
+</body>
+</html>

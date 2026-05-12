@@ -1,14 +1,26 @@
-// Entry point for stats.html (the standalone, public-facing tournament
-// stats page). This page does NOT load the scorekeeper; it only renders
-// the tournament-stats viewer, with auto-load wired to the manifest in
-// assets/tournament-results/.
+// Entry point for every per-tournament stats page (e.g.
+// tournaments/<slug>/index.html). Identifies the current tournament from
+// a <meta name="tournament-slug"> tag, looks up the matching entry in
+// TOURNAMENTS, stamps the document title + page heading, then wires up
+// the manifest-driven viewer.
 //
-// The viewer module (ui/tournament-stats.js) is shared with the eventual
-// in-app embedding, but the public page is the primary surface — pushing
-// new CSVs + manifest to GitHub redeploys the page with fresh stats.
+// The manifest lives next to this page at ./results/manifest.json — the
+// auto-manifest GitHub workflow regenerates it on every push that touches
+// tournaments/<slug>/results/.
 
 import { setupTournamentStats } from './ui/tournament-stats.js';
+import { getTournamentBySlug } from './ui/roster-presets.js';
 
-setupTournamentStats({
-  manifestUrl: 'assets/tournament-results/manifest.json',
-});
+const slugMeta = document.querySelector('meta[name="tournament-slug"]');
+const slug = slugMeta ? slugMeta.content : '';
+const tournament = getTournamentBySlug(slug);
+
+if (tournament) {
+  document.title = `${tournament.name} — Stats`;
+  const heading = document.getElementById('stats-page-heading');
+  if (heading) heading.textContent = tournament.name;
+} else if (slug) {
+  console.warn(`[stats-main] no TOURNAMENTS entry for slug "${slug}"`);
+}
+
+setupTournamentStats({ manifestUrl: 'results/manifest.json' });

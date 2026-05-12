@@ -11,6 +11,7 @@ import { getInitials, getAnsweredBy } from '../game/categories.js';
 import { saveState } from '../game/persistence.js';
 import { syncInlinePdfToQuestion } from './pdf-viewer.js';
 import { pushScoreboardUpdate } from './scoreboard-popout.js';
+import { attachDragReorder } from './drag-reorder.js';
 
 // Pads `state.questions` from the flat parsed list to a slot-indexed array
 // (slot i = question number i+1). Called by startGame and reparseCurrentPdf.
@@ -337,7 +338,6 @@ export function goToQuestion(index) {
 export function renderPlayerPanel(team) {
   const teamObj = team === 'a' ? state.teamA : state.teamB;
   const panel = document.getElementById(`panel-${team}`);
-  const offset = team === 'a' ? 0 : state.teamA.players.length;
 
   let html = `<h3>${escapeHtml(teamObj.name)}</h3>`;
   const currentQ = state.questions[state.currentQuestion];
@@ -345,14 +345,19 @@ export function renderPlayerPanel(team) {
   const isJailbreak = !!(currentQ && currentQ.category && /jailbreak/i.test(currentQ.category));
   const lockSet = isJailbreak ? state.jailbreakLocked[team] : null;
   html += teamObj.players.map((p, i) => {
-    const globalIdx = offset + i;
-    const keybind = globalIdx < 10 ? (globalIdx + 1) % 10 : null;
+    // Team A always uses keys 1-4 (indices 0-3); Team B always uses 5-9, 0
+    // (indices 0-5). Roster size on the other team does not shift these.
+    let keybind = null;
+    if (team === 'a' && i < 4) keybind = i + 1;
+    else if (team === 'b' && i < 5) keybind = i + 5;
+    else if (team === 'b' && i === 5) keybind = 0;
     const points = isStreak ? 5 : 10;
-    const scoreBtn = `<button class="btn ${isStreak ? 'btn-5' : 'btn-10'}" data-action="add-points" data-team="${team}" data-index="${i}" data-points="${points}">+${points}</button>`;
+    const scoreBtn = `<button draggable="false" class="btn ${isStreak ? 'btn-5' : 'btn-10'}" data-action="add-points" data-team="${team}" data-index="${i}" data-points="${points}">+${points}</button>`;
     const locked = lockSet && lockSet.includes(i);
     const lockedClass = locked ? ' player-row-locked' : '';
     const lockedTag = locked ? '<span class="player-lock-tag" title="Already buzzed this jailbreak round">locked</span>' : '';
-    return `<div class="player-row${lockedClass}">
+    return `<div class="player-row${lockedClass}" draggable="true" data-team="${team}" data-index="${i}">
+      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#x2630;</span>
       ${keybind !== null ? `<span class="player-keybind">${keybind}</span>` : ''}
       <span class="player-name">${escapeHtml(p.name)}</span>
       ${lockedTag}
@@ -374,17 +379,19 @@ export function setupGameScreen() {
   // Subscribe renderGame as the single state-change listener.
   subscribe(() => renderGame());
 
-  // Player panels: "+10" / "+5" buttons.
+  // Player panels: "+10" / "+5" buttons, plus drag-to-reorder. The reducer
+  // (reorderPlayer) calls notify(), which fires renderGame and re-renders
+  // both panels — no manual re-render needed here.
   for (const team of ['a', 'b']) {
     const panel = document.getElementById(`panel-${team}`);
-    if (panel) {
-      panel.addEventListener('click', async (e) => {
-        const btn = e.target.closest('button[data-action="add-points"]');
-        if (!btn) return;
-        const { addPoints } = await import('../state.js');
-        addPoints(btn.dataset.team, parseInt(btn.dataset.index, 10), parseInt(btn.dataset.points, 10));
-      });
-    }
+    if (!panel) continue;
+    panel.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action="add-points"]');
+      if (!btn) return;
+      const { addPoints } = await import('../state.js');
+      addPoints(btn.dataset.team, parseInt(btn.dataset.index, 10), parseInt(btn.dataset.points, 10));
+    });
+    attachDragReorder(panel, { itemSelector: '.player-row' });
   }
 
   // Sidebar: question buttons.
