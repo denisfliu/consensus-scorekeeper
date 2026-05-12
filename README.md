@@ -1,90 +1,72 @@
 # consensus-scorekeeper
 
-A browser-based scorekeeper and tournament-stats viewer for
-[Consensus](https://consensustrivia.com/) trivia. Static site — no build
-step, no backend; just open the HTML.
+Scorekeeper and stats viewer for [Consensus](https://consensustrivia.com/) trivia tournaments. It runs in the browser against static files, so any HTTP server (or GitHub Pages) is enough to host it.
+
+![Scorekeeper screen mid-game. The question sidebar runs down the left, the scoreboard sits across the top, the current question and packet PDF share the middle row, and two team player panels are at the bottom.](docs/screenshots/scorekeeper-game.png)
 
 ## Pages
 
-- **`index.html`** — the live scorekeeper. Upload a packet PDF (or pick
-  one from the consensustrivia.com browser), set up rosters, run the
-  game with keyboard shortcuts, export per-game CSV results.
-- **`tournaments/`** — the tournament-stats hub. Lists every tournament
-  hosted here with a search box; pick one to see its standings.
-- **`tournaments/<slug>/`** — per-tournament stats viewer. Auto-loads
-  CSVs from that folder's `results/manifest.json`. Click into a team to
-  see their games, into a game for the per-player breakdown, or into a
-  player for their per-game performances.
-- **`stats.html`** — legacy redirect to `tournaments/` for old bookmarks.
+The repo has four entry points.
 
-## Run locally
+`index.html` is the scorekeeper. You upload a packet (or pick one from the in-app browser of consensustrivia.com), set up rosters, and run the game. Most of the live scoring is keyboard-driven. "Export CSV" at the end writes one row per player.
+
+![Setup screen with "Tournament rosters" switched on. Team A has the Wookiee roster loaded; Team B's dropdown still says "Pick a team".](docs/screenshots/scorekeeper-setup.png)
+
+`tournaments/` is a hub page that lists every tournament hosted on the site, with a search box if the list grows.
+
+![Tournament hub page with a search box at the top and one tournament card for Stanford Consensus 2026 below it.](docs/screenshots/stats-hub.png)
+
+`tournaments/<slug>/` is one tournament's stats page. It reads the CSV exports from `results/manifest.json` in the same folder and shows standings, an individual leaderboard, per-team and per-player drill-downs, and a per-game breakdown.
+
+![Stanford Consensus 2026 stats page. A summary card on top, the team standings table below it, and the individual leaderboard below that.](docs/screenshots/stats-standings.png)
+
+![Per-game drill-down: two side-by-side tables, one for each team, listing every player's points in a single match.](docs/screenshots/stats-game-breakdown.png)
+
+`stats.html` is left over from before the hub existed; it just redirects to `tournaments/`.
+
+## Running it
 
 ```
 python serve.py
 ```
 
-Then open http://localhost:8000/ for the scorekeeper or
-http://localhost:8000/tournaments/ for the stats hub. The bundled dev
-server also proxies `/proxy/` to consensustrivia.com so the in-app pack
-browser works without CORS headaches.
+That starts a dev server on port 8000. The scorekeeper is at /, the hub at /tournaments/. The server also proxies `/proxy/` requests to consensustrivia.com, which is what lets the in-app pack browser work without CORS issues.
 
-## Tournament workflow
+## Running a tournament
 
-When running a tournament with multiple rooms:
+The intended workflow during a multi-room tournament:
 
-1. Each room uses `index.html` to score its game and clicks **Export
-   CSV** at the end.
-2. Collect the CSVs and drop them into `tournaments/<slug>/results/`.
-3. `git add` + commit + push.
-4. A GitHub Action regenerates that folder's `manifest.json`
-   automatically. The next visit to `tournaments/<slug>/` shows the
-   updated standings, leaderboard, and drill-downs.
+1. Each room scores its game in `index.html` and clicks Export CSV at the end.
+2. The CSVs get dropped into `tournaments/<slug>/results/`.
+3. After pushing to GitHub, an Action regenerates that folder's `manifest.json`. The next visit to the tournament's stats page picks up the new games.
 
-That's it — there's no script to run by hand.
-`scripts/update_manifests.py` exists as a manual fallback for
-offline/local development.
+If you're testing locally without pushing, `scripts/update_manifests.py` does the same thing by hand.
 
-To start a new tournament, add an entry to `TOURNAMENTS` in
-`src/ui/roster-presets.js`, create `tournaments/<new-slug>/index.html`
-(copy + adjust the slug from the Stanford one), and drop CSVs in
-`tournaments/<new-slug>/results/`. The hub picks it up automatically.
+To add a new tournament, append an entry to `TOURNAMENTS` in `src/ui/roster-presets.js`, then copy `tournaments/stanford-consensus-2026/index.html` into a new folder named after the slug and change the one `<meta name="tournament-slug">` tag inside. Drop CSVs into the new `results/` folder and the hub starts showing it.
 
 ## Roster modes
 
-The setup screen has a top-right toggle labeled **"Tournament rosters"**:
+There's a "Tournament rosters" toggle in the top-right of the setup screen. When it's off (the default), you type team names freely. When it's on, the team-name fields become dropdowns of preset rosters from the chosen tournament; a second dropdown next to the toggle lets you pick which tournament's rosters to load.
 
-- **OFF** (default) — team-name field is a text input. Rosters built
-  manually.
-- **ON** — team-name field is a dropdown of preset rosters; an
-  additional "Rosters from" dropdown lets you pick which tournament's
-  rosters to load (defined in `src/ui/roster-presets.js`).
-
-Add/remove player buttons work in either mode. The autocomplete
-`<datalist>` on the add-player input includes every known player name
-across every tournament.
+The add-player autocomplete lists every player from every tournament regardless of mode, which is mostly there to keep subs' names from being misspelled.
 
 ## Tutorial
 
-New moderators can click **Tutorial** on the setup screen to launch a
-sandbox session: preset rosters, bundled sample pack, and a 13-step
-coach-marks overlay walking through every control and shortcut. The
-tutorial doesn't touch saved-game persistence — exiting reloads the page
-and restores whatever real session you had open.
+The setup screen has a Tutorial button that boots a sandbox session: preset rosters, a bundled sample pack, and a 13-step walkthrough that highlights each control.
+
+![Tutorial overlay over the scorekeeper. Most of the page is dimmed; a spotlit element shows a player panel with a tooltip explaining the scoring button.](docs/screenshots/tutorial-overlay.png)
+
+The tutorial doesn't touch your saved game. Closing it reloads the page and restores whatever real session you had before.
 
 ## Tests
 
 ```
-npm install         # one-time
-npm test            # run the suite
+npm install
+npm test
 ```
 
-Vitest + happy-dom. ~120 tests covering the parser, scoring reducers,
-CSV exporter round-trip, tournament aggregator, and a structural sweep
-across every `tournaments/*/results/` folder.
+About 120 tests via Vitest + happy-dom. They cover the PDF question parser, the scoring reducers, the CSV export round-trip, the tournament aggregator, and a structural sweep over every CSV under `tournaments/*/results/`.
 
 ## Internal notes
 
-`CLAUDE.md` documents architecture conventions, module layout, and the
-parts of the code that aren't obvious from reading it (state ownership,
-persistence keys, multi-page module sharing rules, the
-adding-a-tournament runbook). Read that before refactoring.
+`CLAUDE.md` has the architecture notes that aren't obvious from reading the code: state ownership, localStorage key conventions, what's allowed where between modules, and the runbook for adding a tournament. Worth reading before refactoring anything substantial.
