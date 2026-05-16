@@ -9,6 +9,7 @@ import { escapeHtml } from './util/escape.js';
 import { readZip } from './parser/zip.js';
 import { extractRichLinesFromPdf } from './parser/pdf-text.js';
 import { parseQuestions } from './parser/questions.js';
+import { parseTextPack } from './parser/text-pack.js';
 import { saveState, savePdfBytes } from './game/persistence.js';
 
 export async function parsePdf(arrayBuffer, filename) {
@@ -108,4 +109,49 @@ export async function processZipBuffer(buffer) {
 
 export async function handleZipUpload(file) {
   await processZipBuffer(await file.arrayBuffer());
+}
+
+export async function parseTextFile(text, filename) {
+  const statusEl = document.getElementById('pdf-status');
+  if (statusEl) {
+    statusEl.textContent = 'Parsing text pack...';
+    statusEl.className = 'pdf-status';
+  }
+  state.packName = filename || null;
+  // No PDF backs this pack; clear any prior PDF bytes so the inline viewer
+  // doesn't try to render a stale doc from a previous session.
+  state.pdfBytes = null;
+  if (state.pdfViewer) state.pdfViewer.doc = null;
+  try {
+    const questions = parseTextPack(text);
+    const totalSlots = questions.reduce((sum, q) => {
+      if (q.streakRange) return sum + (q.streakRange.end - q.streakRange.start + 1);
+      return sum + 1;
+    }, 0);
+    if (questions.length >= 10) {
+      state.questions = questions;
+      state.hasQuestions = true;
+      if (statusEl) {
+        const cls = totalSlots === 100 ? 'success' : 'warn';
+        statusEl.textContent = `Parsed ${questions.length} questions (${totalSlots} slots) from "${filename}".` +
+          (totalSlots !== 100 ? ` (Expected 100)` : '');
+        statusEl.className = `pdf-status ${cls}`;
+      }
+      saveState();
+    } else {
+      state.questions = [];
+      state.hasQuestions = false;
+      if (statusEl) {
+        statusEl.textContent = `Could not parse questions from "${filename}" (found ${questions.length}).`;
+        statusEl.className = 'pdf-status warn';
+      }
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = 'Error parsing text pack: ' + err.message;
+      statusEl.className = 'pdf-status error';
+    }
+    state.questions = [];
+    state.hasQuestions = false;
+  }
 }

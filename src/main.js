@@ -28,7 +28,7 @@ import { rebuildStreakGroups } from './game/streaks.js';
 import { getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize } from './game/categories.js';
 import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, loadPdfBytes, clearSavedState } from './game/persistence.js';
 import { addPlayer, removePlayer, renderRoster, setupSetupScreen, setTeamNameField, toggleRosterMode } from './ui/setup.js';
-import { parsePdf, processZipBuffer, handleZipUpload } from './loader.js';
+import { parsePdf, processZipBuffer, handleZipUpload, parseTextFile } from './loader.js';
 import { readZip, looksLikePdfOrZip } from './parser/zip.js';
 import { extractRichLinesFromPdf } from './parser/pdf-text.js';
 import { SECTION_WORDS, STRUCTURAL_RE, cleanTrailing, extractRichRange, richToHtml, parseQuestions } from './parser/questions.js';
@@ -67,6 +67,7 @@ import {
 import { pushScoreboardUpdate, popOutScoreboard } from './ui/scoreboard-popout.js';
 import { setupPackBrowser } from './ui/pack-browser.js';
 import { startTutorialGame } from './ui/tutorial.js';
+import { setupFormatPack, formatPackActions } from './ui/format-pack.js';
 
 // ==================== UI INIT ====================
 setupSetupScreen();
@@ -76,13 +77,16 @@ setupKeybinds({ nextQuestion: () => nextQuestion(), prevQuestion: () => prevQues
 setupSplitters();
 setupPdfViewer();
 setupPackBrowser();
+setupFormatPack();
 
-// File picker on the setup screen — uploads either a PDF or a zip-of-PDFs.
+// File picker on the setup screen — uploads either a PDF, zip-of-PDFs, or .txt.
 document.getElementById('pdf-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   if (file.name.endsWith('.zip')) {
     await handleZipUpload(file);
+  } else if (file.name.endsWith('.txt')) {
+    await parseTextFile(await file.text(), file.name);
   } else {
     await parsePdf(await file.arrayBuffer(), file.name);
   }
@@ -199,6 +203,7 @@ const ACTION_HANDLERS = {
   'export-csv': () => exportCsv(),
   'reparse-current-pdf': () => reparseCurrentPdf(),
   'back-to-setup': () => backToSetup(),
+  ...formatPackActions,
 };
 
 document.addEventListener('click', (e) => {
