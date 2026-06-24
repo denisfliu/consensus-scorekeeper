@@ -28,7 +28,7 @@ import { rebuildStreakGroups } from './game/streaks.js';
 import { getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize } from './game/categories.js';
 import { STORAGE_KEY, PDF_STORAGE_KEY, isGameVisible, saveState, savePdfBytes, loadPdfBytes, clearSavedState } from './game/persistence.js';
 import { addPlayer, removePlayer, renderRoster, setupSetupScreen, setTeamNameField, toggleRosterMode } from './ui/setup.js';
-import { parsePdf, processZipBuffer, handleZipUpload } from './loader.js';
+import { parsePdf, parseDocx, processZipBuffer, handleZipUpload } from './loader.js';
 import { readZip, looksLikePdfOrZip } from './parser/zip.js';
 import { extractRichLinesFromPdf } from './parser/pdf-text.js';
 import { SECTION_WORDS, STRUCTURAL_RE, cleanTrailing, extractRichRange, richToHtml, parseQuestions } from './parser/questions.js';
@@ -77,12 +77,16 @@ setupSplitters();
 setupPdfViewer();
 setupPackBrowser();
 
-// File picker on the setup screen — uploads either a PDF or a zip-of-PDFs.
+// File picker on the setup screen — uploads a PDF, a zip-of-PDFs, or a .docx
+// packet (text-only; no inline PDF viewer for .docx-sourced packs).
 document.getElementById('pdf-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (file.name.endsWith('.zip')) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.zip')) {
     await handleZipUpload(file);
+  } else if (lower.endsWith('.docx')) {
+    await parseDocx(await file.arrayBuffer(), file.name);
   } else {
     await parsePdf(await file.arrayBuffer(), file.name);
   }

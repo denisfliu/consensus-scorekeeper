@@ -79,3 +79,8 @@ export function clearSavedState() {
     localStorage.removeItem(PDF_STORAGE_KEY);
   } catch (e) { /* ignore */ }
 }
+
+export function clearSavedPdfBytes() {
+  if (state.tutorialMode) return;
+  try { localStorage.removeItem(PDF_STORAGE_KEY); } catch (e) { /* ignore */ }
+}

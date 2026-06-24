@@ -8,7 +8,8 @@ Two root pages and one folder-per-tournament under `tournaments/`. All
 share `styles/main.css` and the contents of `src/`:
 
 - `index.html` → the live scorekeeper. Boots the scoring UI, parses the
-  PDF, drives all the in-game features.
+  uploaded packet (`.pdf`, `.zip` of PDFs, or `.docx`), drives all the
+  in-game features.
 - `stats.html` → legacy redirect notice. Old bookmarks land here and
   meta-refresh to `tournaments/` after a few seconds.
 - `tournaments/index.html` → the **public stats hub**. Lists every
@@ -51,16 +52,18 @@ src/
                           stamps title from TOURNAMENTS[slug], loads results/manifest.json
   tournaments-main.js   ← tournaments/index.html entry: hub list + search filter
   state.js              ← state singleton + reducers + subscribe()
-  loader.js             ← parsePdf / processZipBuffer / handleZipUpload orchestrators
+  loader.js             ← parsePdf / parseDocx / processZipBuffer / handleZipUpload orchestrators
   parser/
-    zip.js              ← readZip, looksLikePdfOrZip
+    zip.js              ← readZip (optional accept(name) filter), looksLikePdfOrZip
     pdf-text.js         ← extractRichLinesFromPdf (pdf.js → lines/segments/posMap)
     questions.js        ← parseQuestions + cleanTrailing + extractRichRange + richToHtml
+    docx-text.js        ← extractDocxParagraphs (zip → word/document.xml → runs[])
+    docx-questions.js   ← parseDocxBuffer + inferStreakSlotCount (JS port of scripts/parse_consensus_docx.py)
   game/
     streaks.js          ← rebuildStreakGroups
     jailbreak.js        ← rebuildJailbreakLocks
     categories.js       ← getInitials, getAnsweredBy, getSplitPair, getCategoryRunSize
-    persistence.js      ← saveState, loadPdfBytes, savePdfBytes, clearSavedState, isGameVisible
+    persistence.js      ← saveState, loadPdfBytes, savePdfBytes, clearSavedPdfBytes, clearSavedState, isGameVisible
   ui/
     setup.js            ← roster CRUD + Tournament-rosters on/off toggle + tournament picker
     roster-presets.js   ← TOURNAMENTS registry (slug + rosters + description; no statsPage —
@@ -89,6 +92,8 @@ scripts/                ← Python helpers; run from anywhere (paths use __file_
   scrape_packs.py       ← regenerates ui/pack-browser.js's PACK_CATALOG
   generate_fake_tournament.py  ← writes a round-robin into tournaments/<slug>/results/
   update_manifests.py          ← rewrites manifest.json in every tournaments/*/results/ folder
+  parse_consensus_docx.py      ← offline .docx → JSON/text dump; reference implementation
+                                  for src/parser/docx-questions.js — keep the two in sync
 .github/workflows/
   update-manifest.yml   ← auto-regenerates manifests on push (see below)
 tests/                  ← vitest tests; run with `npm test`
@@ -113,7 +118,7 @@ tests/                  ← vitest tests; run with `npm test`
 - **Persistence keys are namespaced and versioned.** Each subsystem owns
   its own localStorage key:
   - `consensus-state-v1`             — saved scorekeeper game (game/persistence.js)
-  - `consensus-stats-pdf-v1`         — saved PDF bytes (game/persistence.js)
+  - `consensus-stats-pdf-v1`         — saved PDF bytes (game/persistence.js). Cleared on `.docx` upload via `clearSavedPdfBytes()` so the inline viewer doesn't try to render a stale PDF from the previous pack.
   - `consensus-roster-mode-v1`       — 'custom' (default) or 'preset'; legacy 'tournament' is migrated to 'preset' on read (ui/setup.js)
   - `consensus-tournament-slug-v1`   — which TOURNAMENTS entry drives the preset team-name dropdown (ui/setup.js)
 - **Multiple pages share modules**, so anything imported by `stats-main.js`
@@ -134,8 +139,14 @@ dropdown that appears alongside ON:
   from the chosen tournament's `rosters`. The picker (`Rosters from
   <select>`) lists every entry in `TOURNAMENTS`; changing it clears the
   current teams and repopulates the dropdowns from the newly chosen
-  tournament. Adding a player still offers an autocomplete `<datalist>`
-  of every name across every tournament.
+  tournament. Adding a player offers an autocomplete `<datalist>` of
+  every name across every tournament.
+
+The add-player `<datalist>` is also gated on mode: in `custom` mode
+`populatePlayerSuggestions()` empties it, so a manually-typed roster
+isn't nudged toward names from tournaments the user isn't running. The
+toggle re-runs `populatePlayerSuggestions()` so suggestions flip on/off
+immediately.
 
 Internally the modes are named `custom` and `preset`. The legacy
 `'tournament'` value is migrated to `'preset'` on read for users on older
@@ -147,6 +158,53 @@ sections can show/hide themselves without JS coordination.
 `setTeamNameField(team, name)` is the mode-aware setter that
 `loadState`, `tutorial.js`, and the toggle itself use to display a name
 in whichever element is currently mounted.
+
+## Packet upload — `.pdf` vs `.docx`
+
+The file picker (`#pdf-input`, `accept=".pdf,.zip,.docx"`) dispatches
+in `src/main.js` by extension:
+
+- **`.pdf`** → `parsePdf` (`loader.js`). pdf.js extracts rich text with
+  font + position info; `parseQuestions` turns it into the canonical
+  question shape; `state.pdfBytes` is saved so the inline PDF viewer can
+  render pages.
+- **`.zip`** → `processZipBuffer` → `handleZipUpload`. `readZip` walks
+  the central directory, the dropdown gets one entry per PDF, and the
+  first selection auto-loads. The zip path is PDFs-only at the moment.
+- **`.docx`** → `parseDocx` (`loader.js`). `extractDocxParagraphs`
+  reads `word/document.xml` out of the docx (which is itself a zip) and
+  yields `[{ text, bold }]` runs; `parseDocxBuffer` runs the same state
+  machine as `scripts/parse_consensus_docx.py` and emits questions in
+  the PDF-parser's shape (`answerHtml`, `streakRange`,
+  `categoryInstructions`, `pageNum: null`, `yPos: null`). `state.pdfBytes`
+  is cleared and `clearSavedPdfBytes()` runs, so the inline viewer hides
+  itself for `.docx`-sourced packs.
+
+The PDF parser and the docx parser produce identical-shape question
+records, so everything downstream (`padQuestionsToSlots`, `startGame`,
+`rebuildStreakGroups`, scoring, CSV export) doesn't know or care which
+upload path produced them.
+
+### Streak-slot inference (docx-only)
+
+In a PDF packet the streak's slot span is encoded by the gap between
+the streak's question number and the next question's number (e.g.
+`85.` … `90.` → slots 85–89). The `.docx` format has no question
+numbers, so `inferStreakSlotCount(prompt, answerCount)` reads it from
+the streak's prompt:
+
+1. Look for `up to (all) N` / `name N` / `give N` (digit or
+   `one`..`twelve`) in the prompt — writers sometimes list more
+   accepted answers than the cap allows, so the prompt is more
+   authoritative than the `A:` count.
+2. Fall back to `answerCount` if no cap is found.
+3. Return `max(1, ceil(cap / 2))` — each streak answer is worth half
+   points, so `N` accepted answers ≈ `N/2` regular-question slots.
+
+If you change this heuristic, update both
+`src/parser/docx-questions.js` and `scripts/parse_consensus_docx.py`
+together. Both have a `CAP_RE` and an `inferStreakSlotCount` you can
+keep in lockstep.
 
 ## Adding a new tournament
 

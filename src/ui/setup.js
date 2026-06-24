@@ -117,6 +117,13 @@ function buildTeamInputMarkup(team, currentName) {
 function populatePlayerSuggestions() {
   const dl = document.getElementById('player-suggestions');
   if (!dl) return;
+  // Suggestions are the cross-tournament player list. In custom mode the
+  // user isn't drafting from a preset roster, so suggesting names from
+  // tournaments they aren't using is noise — empty the datalist instead.
+  if (rosterMode !== 'preset') {
+    dl.innerHTML = '';
+    return;
+  }
   dl.innerHTML = PLAYER_SUGGESTIONS
     .map((name) => `<option value="${escapeHtml(name)}"></option>`)
     .join('');
@@ -244,6 +251,7 @@ export function toggleRosterMode() {
   rosterMode = rosterMode === 'custom' ? 'preset' : 'custom';
   try { localStorage.setItem(ROSTER_MODE_KEY, rosterMode); } catch {}
   syncToggleLabel();
+  populatePlayerSuggestions();
   // After re-rendering, carry whatever name lives in state into the new
   // field so a custom-typed name isn't dropped on toggle. In preset mode
   // this also preserves a non-preset name as a one-off <option>.

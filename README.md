@@ -8,7 +8,7 @@ Scorekeeper and stats viewer for [Consensus](https://consensustrivia.com/) trivi
 
 The repo has four entry points.
 
-`index.html` is the scorekeeper. You upload a packet (or pick one from the in-app browser of consensustrivia.com), set up rosters, and run the game. Most of the live scoring is keyboard-driven. "Export CSV" at the end writes one row per player. There's also a Pop Out button that opens a dark, presentation-style scoreboard in a separate window for projecting to players or spectators.
+`index.html` is the scorekeeper. You upload a packet — `.pdf`, a `.zip` of PDFs, or a `.docx` — or pick one from the in-app browser of consensustrivia.com, set up rosters, and run the game. PDF packs get an inline PDF viewer for cross-checking; `.docx`-sourced packs are text-only (no viewer). Most of the live scoring is keyboard-driven. "Export CSV" at the end writes one row per player. There's also a Pop Out button that opens a dark, presentation-style scoreboard in a separate window for projecting to players or spectators.
 
 ![Setup screen with "Tournament rosters" switched on. Team A has the Wookiee roster loaded; Team B's dropdown still says "Pick a team".](docs/screenshots/scorekeeper-setup.png)
 
@@ -50,7 +50,7 @@ To add a new tournament, append an entry to `TOURNAMENTS` in `src/ui/roster-pres
 
 There's a "Tournament rosters" toggle in the top-right of the setup screen. When it's off (the default), you type team names freely. When it's on, the team-name fields become dropdowns of preset rosters from the chosen tournament; a second dropdown next to the toggle lets you pick which tournament's rosters to load.
 
-The add-player autocomplete lists every player from every tournament regardless of mode, which is mostly there to keep subs' names from being misspelled.
+In preset mode the add-player autocomplete lists every player from every tournament (mostly to keep subs' names from being misspelled). In custom mode the autocomplete is empty — typing your own roster shouldn't get nudged toward names from tournaments you aren't using.
 
 ## Tutorial
 
@@ -67,7 +67,7 @@ npm install
 npm test
 ```
 
-About 120 tests via Vitest + happy-dom. They cover the PDF question parser, the scoring reducers, the CSV export round-trip, the tournament aggregator, and a structural sweep over every CSV under `tournaments/*/results/`.
+About 130 tests via Vitest + happy-dom. They cover the PDF question parser, the `.docx` parser (including the streak-slot inference heuristic), the scoring reducers, the CSV export round-trip, the tournament aggregator, and a structural sweep over every CSV under `tournaments/*/results/`.
 
 ## Internal notes
 

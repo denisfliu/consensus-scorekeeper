@@ -1,9 +1,11 @@
 // Pure ZIP reader. Walks the End-Of-Central-Directory record, then each
 // Central Directory entry, decoding its Local File Header to find the data.
 // Supports STORE (method 0) and DEFLATE (method 8) only — other methods are
-// silently skipped. Returns only entries whose names end in `.pdf`.
+// silently skipped. Default behaviour returns only entries whose names end
+// in `.pdf`; pass a custom `accept(name)` predicate to widen this (e.g.
+// to extract `word/document.xml` from a .docx).
 
-export async function readZip(buffer) {
+export async function readZip(buffer, accept = (name) => name.endsWith('.pdf')) {
   const view = new DataView(buffer);
   const bytes = new Uint8Array(buffer);
   const entries = [];
@@ -52,7 +54,7 @@ export async function readZip(buffer) {
       pos += 46 + nameLen + extraLen + commentLen;
       continue;
     }
-    if (name.endsWith('.pdf')) {
+    if (accept(name)) {
       entries.push({ name, data: fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength) });
     }
     pos += 46 + nameLen + extraLen + commentLen;
@@ -61,7 +63,8 @@ export async function readZip(buffer) {
 }
 
 // PDFs start with "%PDF" (0x25 0x50 0x44 0x46), zips start with "PK\x03\x04"
-// (0x50 0x4B 0x03 0x04). Used to validate proxy responses.
+// (0x50 0x4B 0x03 0x04). .docx files are zips (same magic). Used to validate
+// proxy responses; .docx detection happens at the filename layer instead.
 export function looksLikePdfOrZip(buffer) {
   if (!buffer || buffer.byteLength < 4) return false;
   const b = new Uint8Array(buffer, 0, 4);
